@@ -3,19 +3,18 @@ EPUB parser for extracting chapters and metadata.
 Adapted from abogen's book_handler.py with navigation support.
 """
 
-import re
 import logging
+import re
 import urllib.parse
-from typing import List, Optional, Dict, Any
 from pathlib import Path
+from typing import Any, Optional
 
 import ebooklib
-from ebooklib import epub
 from bs4 import BeautifulSoup, NavigableString
+from ebooklib import epub
 
+from .cleaner import calculate_text_length, clean_text
 from .models import Chapter, Metadata
-from .cleaner import clean_text, calculate_text_length
-
 
 logger = logging.getLogger(__name__)
 
@@ -47,10 +46,10 @@ class EPUBParser:
 
         self.paragraph_separator = paragraph_separator
         self.book = None
-        self.doc_content: Dict[str, str] = {}
-        self.content_texts: Dict[str, str] = {}
-        self.content_lengths: Dict[str, int] = {}
-        self.processed_nav_structure: List[Dict[str, Any]] = []
+        self.doc_content: dict[str, str] = {}
+        self.content_texts: dict[str, str] = {}
+        self.content_lengths: dict[str, int] = {}
+        self.processed_nav_structure: list[dict[str, Any]] = []
         self._metadata: Optional[Metadata] = None
 
         self._load_epub()
@@ -61,7 +60,7 @@ class EPUBParser:
             self.book = epub.read_epub(str(self.filepath))
             logger.info(f"Loaded EPUB: {self.filepath.name}")
         except Exception as e:
-            raise ValueError(f"Failed to read EPUB file: {e}")
+            raise ValueError(f"Failed to read EPUB file: {e}") from e
 
     def get_metadata(self) -> Metadata:
         """
@@ -131,7 +130,7 @@ class EPUBParser:
         self._metadata = Metadata(**metadata_dict)
         return self._metadata
 
-    def get_chapters(self) -> List[Chapter]:
+    def get_chapters(self) -> list[Chapter]:
         """
         Extract all chapters from the EPUB using navigation.
 
@@ -149,8 +148,8 @@ class EPUBParser:
 
     def _build_chapters_from_nav(
         self,
-        nav_structure: List[Dict[str, Any]],
-        chapters: List[Chapter],
+        nav_structure: list[dict[str, Any]],
+        chapters: list[Chapter],
         parent_id: Optional[str] = None,
         level: int = 1,
     ):
@@ -163,7 +162,7 @@ class EPUBParser:
             parent_id: ID of parent chapter (for nested chapters)
             level: Depth level in the chapter hierarchy
         """
-        for idx, entry in enumerate(nav_structure):
+        for _idx, entry in enumerate(nav_structure):
             src = entry.get("src")
             title = entry.get("title", "Untitled")
             children = entry.get("children", [])
@@ -192,7 +191,7 @@ class EPUBParser:
                     children, chapters, parent_id=chapter_id, level=level + 1
                 )
 
-    def _process_epub_content_nav(self):
+    def _process_epub_content_nav(self):  # noqa: C901
         """
         Process EPUB content using ITEM_NAVIGATION (NAV HTML) or ITEM_NCX.
         Globally orders navigation entries and slices content between them.
@@ -287,7 +286,7 @@ class EPUBParser:
             nav_soup = BeautifulSoup(nav_content, parser_type)
         except Exception as e:
             logger.error(f"Failed to parse navigation: {e}")
-            raise ValueError(f"Failed to parse navigation content: {e}")
+            raise ValueError(f"Failed to parse navigation content: {e}") from e
 
         # Cache all document HTML and determine spine order
         self.doc_content = {}
@@ -505,7 +504,7 @@ class EPUBParser:
                             "children": [],
                         },
                     )
-                    logger.info(f"Added prefix content chapter")
+                    logger.info("Added prefix content chapter")
 
         logger.info(f"Finished processing. Found {len(self.content_texts)} sections")
 
@@ -733,7 +732,7 @@ class EPUBParser:
         logger.warning(f"Anchor '{fragment_id}' not found in {doc_href}")
         return 0
 
-    def extract_chapters(self, chapter_ids: Optional[List[str]] = None) -> str:
+    def extract_chapters(self, chapter_ids: Optional[list[str]] = None) -> str:
         """
         Extract text from selected chapters.
 

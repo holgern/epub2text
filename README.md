@@ -4,9 +4,10 @@ A niche CLI tool to extract text from EPUB files with smart cleaning capabilitie
 
 ## Features
 
-- **Smart Navigation Parsing**: Supports both EPUB3 (NAV HTML) and EPUB2 (NCX) navigation formats
+- **Smart Navigation Parsing**: Supports both EPUB3 (NAV HTML) and EPUB2 (NCX)
+  navigation formats
 - **Selective Extraction**: Extract specific chapters by range or interactive selection
-- **Smart Text Cleaning**: 
+- **Smart Text Cleaning**:
   - Remove bracketed footnotes (`[1]`, `[42]`)
   - Remove page numbers (standalone, at line ends, with dashes)
   - Normalize whitespace and paragraph breaks
@@ -157,7 +158,7 @@ cleaned_text = cleaner.clean(text)
 The smart text cleaner applies the following transformations by default:
 
 1. **Bracketed Footnotes**: Removes `[1]`, `[42]`, etc.
-2. **Page Numbers**: 
+2. **Page Numbers**:
    - Standalone page numbers on their own line
    - Page numbers at the end of lines
    - Page numbers with dashes (e.g., `- 42 -`)
@@ -208,7 +209,8 @@ The parser uses a sophisticated navigation-based approach:
 
 - **EPUB3 NAV HTML**: Parses `<nav epub:type="toc">` with nested `<ol>/<li>` structures
 - **EPUB2 NCX**: Parses `<navMap>` with `<navPoint>` elements
-- **Fragment IDs**: Robust position detection using BeautifulSoup, regex, and string search
+- **Fragment IDs**: Robust position detection using BeautifulSoup, regex, and string
+  search
 - **Nested Structures**: Handles hierarchical chapter organization
 
 ## Contributing

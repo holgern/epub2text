@@ -1,7 +1,5 @@
 """Text formatting utilities for different output styles."""
 
-from typing import Any
-
 try:
     import spacy  # type: ignore
 
@@ -39,7 +37,7 @@ def format_as_sentences(text: str, language_model: str = "en_core_web_sm") -> st
         raise OSError(
             f"spaCy language model '{language_model}' not found. "
             f"Download with: python -m spacy download {language_model}"
-        )
+        ) from None
 
     # Process text in chunks to handle large documents
     # spaCy has a default max length of 1M characters

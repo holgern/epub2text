@@ -4,26 +4,25 @@ Command-line interface for epub2text.
 
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 import click
 from rich.console import Console
-from rich.table import Table
-from rich.prompt import Prompt, Confirm
 from rich.panel import Panel
-from rich.tree import Tree
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.prompt import Confirm, Prompt
+from rich.table import Table
+from rich.tree import Tree
 
-from .parser import EPUBParser
 from .cleaner import TextCleaner
-from .models import Chapter
 from .formatters import format_as_sentences
-
+from .models import Chapter
+from .parser import EPUBParser
 
 console = Console()
 
 
-def parse_chapter_range(range_str: str) -> List[int]:
+def parse_chapter_range(range_str: str) -> list[int]:
     """
     Parse chapter range string like "1-5,7,9-12" into list of indices.
 
@@ -48,7 +47,7 @@ def parse_chapter_range(range_str: str) -> List[int]:
     return sorted(indices)
 
 
-def display_chapters_tree(chapters: List[Chapter]):
+def display_chapters_tree(chapters: list[Chapter]):
     """Display chapters in a tree structure."""
     tree = Tree("📚 [bold]Chapters[/bold]")
 
@@ -78,7 +77,7 @@ def display_chapters_tree(chapters: List[Chapter]):
     console.print(tree)
 
 
-def display_chapters_table(chapters: List[Chapter]):
+def display_chapters_table(chapters: list[Chapter]):
     """Display chapters in a table format."""
     table = Table(title="📚 Chapters", show_header=True, header_style="bold magenta")
     table.add_column("#", style="dim", width=6)
@@ -94,7 +93,7 @@ def display_chapters_table(chapters: List[Chapter]):
     console.print(table)
 
 
-def interactive_chapter_selection(chapters: List[Chapter]) -> List[str]:
+def interactive_chapter_selection(chapters: list[Chapter]) -> list[str]:
     """
     Interactively select chapters using rich prompts.
 
@@ -106,7 +105,8 @@ def interactive_chapter_selection(chapters: List[Chapter]) -> List[str]:
     """
     console.print("\n[bold]Interactive Chapter Selection[/bold]")
     console.print(
-        "Enter chapter numbers or ranges (e.g., '1-5,7,9-12'), or 'all' for all chapters:"
+        "Enter chapter numbers or ranges (e.g., '1-5,7,9-12'), "
+        "or 'all' for all chapters:"
     )
 
     while True:
@@ -167,7 +167,7 @@ def list(filepath: Path, format: str):
             TextColumn("[progress.description]{task.description}"),
             console=console,
         ) as progress:
-            task = progress.add_task(f"Loading {filepath.name}...", total=None)
+            progress.add_task(f"Loading {filepath.name}...", total=None)
             parser = EPUBParser(str(filepath))
             chapters = parser.get_chapters()
             progress.stop()
@@ -205,7 +205,8 @@ def list(filepath: Path, format: str):
     "-s",
     type=click.Choice(["compact", "readable", "sentences"]),
     default="compact",
-    help="Output format: compact (epub2txt style), readable (blank lines), sentences (one per line)",
+    help="Output format: compact (epub2txt style), readable (blank lines), "
+    "sentences (one per line)",
 )
 @click.option("--no-clean", is_flag=True, help="Disable smart text cleaning")
 @click.option(
@@ -240,7 +241,8 @@ def extract(
         # Validate format-style and no-clean combination
         if format_style == "sentences" and no_clean:
             console.print(
-                "[red]Error: --format-style sentences cannot be used with --no-clean[/red]"
+                "[red]Error: --format-style sentences cannot be used with "
+                "--no-clean[/red]"
             )
             sys.exit(1)
 
@@ -258,7 +260,7 @@ def extract(
             TextColumn("[progress.description]{task.description}"),
             console=console,
         ) as progress:
-            task = progress.add_task(f"Loading {filepath.name}...", total=None)
+            progress.add_task(f"Loading {filepath.name}...", total=None)
             parser = EPUBParser(str(filepath), paragraph_separator=paragraph_sep)
             all_chapters = parser.get_chapters()
             progress.stop()
@@ -288,7 +290,7 @@ def extract(
             TextColumn("[progress.description]{task.description}"),
             console=console,
         ) as progress:
-            task = progress.add_task("Extracting chapters...", total=None)
+            progress.add_task("Extracting chapters...", total=None)
             text = parser.extract_chapters(chapter_ids)
             progress.stop()
 
@@ -304,7 +306,7 @@ def extract(
                 TextColumn("[progress.description]{task.description}"),
                 console=console,
             ) as progress:
-                task = progress.add_task("Cleaning text...", total=None)
+                progress.add_task("Cleaning text...", total=None)
                 text = cleaner.clean(text)
                 progress.stop()
 
@@ -315,7 +317,7 @@ def extract(
                 TextColumn("[progress.description]{task.description}"),
                 console=console,
             ) as progress:
-                task = progress.add_task("Formatting sentences...", total=None)
+                progress.add_task("Formatting sentences...", total=None)
                 try:
                     text = format_as_sentences(text, language_model=language_model)
                 except ImportError as e:
@@ -351,7 +353,7 @@ def info(filepath: Path):
             TextColumn("[progress.description]{task.description}"),
             console=console,
         ) as progress:
-            task = progress.add_task(f"Loading {filepath.name}...", total=None)
+            progress.add_task(f"Loading {filepath.name}...", total=None)
             parser = EPUBParser(str(filepath))
             metadata = parser.get_metadata()
             chapters = parser.get_chapters()

@@ -1,7 +1,7 @@
 """Data models for EPUB chapters and metadata."""
 
 from dataclasses import dataclass, field
-from typing import Optional, List
+from typing import Optional
 
 
 @dataclass
@@ -24,7 +24,7 @@ class Metadata:
     """EPUB metadata."""
 
     title: Optional[str] = None
-    authors: List[str] = field(default_factory=list)
+    authors: list[str] = field(default_factory=list)
     publisher: Optional[str] = None
     publication_year: Optional[str] = None
     description: Optional[str] = None

@@ -30,11 +30,14 @@ class TextCleaner:
         """Initialize text cleaner with options.
 
         Args:
-            remove_page_numbers: Remove standalone and end-of-line page numbers
+            remove_page_numbers: Remove standalone and end-of-line page
+                numbers
             remove_footnotes: Remove bracketed footnote markers like [1]
-            replace_single_newlines: Replace single newlines with spaces (preserve paragraphs)
+            replace_single_newlines: Replace single newlines with spaces
+                (preserve paragraphs)
             normalize_whitespace: Collapse multiple spaces to single space
-            preserve_single_newlines: Keep single newlines as paragraph separators (overrides replace_single_newlines)
+            preserve_single_newlines: Keep single newlines as paragraph
+                separators (overrides replace_single_newlines)
         """
         self.remove_page_numbers = remove_page_numbers
         self.remove_footnotes = remove_footnotes
