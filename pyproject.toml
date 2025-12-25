@@ -19,6 +19,8 @@ urls = { Homepage = "https://github.com/holgern/epub2text" }
 dependencies = [
     "click>=8.0.0",
     "rich>=13.0.0",
+    "ebooklib>=0.18",
+    "beautifulsoup4>=4.12.0",
 ]
 classifiers=[
     'Intended Audience :: Developers',
@@ -35,6 +37,14 @@ classifiers=[
 ]
 
 dynamic=["version"]
+
+[project.optional-dependencies]
+sentences = [
+    "spacy>=3.5.0",
+]
+lxml = [
+    "lxml>=4.9.0",
+]
 dev = [
     "pytest>=7.0.0",
     "ruff>=0.1.0",
