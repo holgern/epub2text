@@ -1,17 +1,18 @@
 """Text formatting utilities for different output styles."""
 
 import re
+from typing import Any
 
 try:
-    import spacy  # type: ignore
+    import spacy  # type: ignore[import-not-found]
 
     SPACY_AVAILABLE = True
 except ImportError:
     SPACY_AVAILABLE = False
-    spacy = None  # type: ignore
+    spacy = None
 
 # Cache for loaded spaCy model
-_nlp_cache: dict = {}
+_nlp_cache: dict[str, Any] = {}
 
 # Placeholder for ellipsis during spaCy processing
 _ELLIPSIS_PLACEHOLDER = "\u2026"  # Unicode ellipsis character
@@ -38,7 +39,7 @@ def _restore_ellipsis(text: str) -> str:
     return text.replace(_ELLIPSIS_PLACEHOLDER, ". . .")
 
 
-def _get_nlp(language_model: str = "en_core_web_sm"):
+def _get_nlp(language_model: str = "en_core_web_sm") -> Any:
     """Get or load a spaCy model (cached)."""
     if not SPACY_AVAILABLE:
         raise ImportError(
@@ -48,7 +49,9 @@ def _get_nlp(language_model: str = "en_core_web_sm"):
 
     if language_model not in _nlp_cache:
         try:
-            _nlp_cache[language_model] = spacy.load(language_model)  # type: ignore
+            # spacy is guaranteed to be not None here due to SPACY_AVAILABLE check above
+            assert spacy is not None
+            _nlp_cache[language_model] = spacy.load(language_model)
         except OSError:
             raise OSError(
                 f"spaCy language model '{language_model}' not found. "
@@ -237,7 +240,7 @@ def split_long_lines(
     return "\n".join(result_lines)
 
 
-def _split_at_boundaries(text: str, max_length: int, nlp) -> list[str]:
+def _split_at_boundaries(text: str, max_length: int, nlp: Any) -> list[str]:
     """
     Split text at sentence/clause boundaries to fit within max_length.
 

@@ -9,8 +9,8 @@ import urllib.parse
 from pathlib import Path
 from typing import Any, Optional
 
-import ebooklib
-from bs4 import BeautifulSoup, NavigableString
+import ebooklib  # type: ignore[import-untyped]
+from bs4 import BeautifulSoup, NavigableString  # type: ignore[import-untyped]
 from ebooklib import epub
 
 from .cleaner import calculate_text_length, clean_text
@@ -45,7 +45,7 @@ class EPUBParser:
             raise FileNotFoundError(f"File not found: {filepath}")
 
         self.paragraph_separator = paragraph_separator
-        self.book = None
+        self.book: Any = None
         self.doc_content: dict[str, str] = {}
         self.content_texts: dict[str, str] = {}
         self.content_lengths: dict[str, int] = {}
@@ -54,7 +54,7 @@ class EPUBParser:
 
         self._load_epub()
 
-    def _load_epub(self):
+    def _load_epub(self) -> None:
         """Load and parse the EPUB file."""
         try:
             self.book = epub.read_epub(str(self.filepath))
@@ -67,7 +67,8 @@ class EPUBParser:
         try:
             items = self.book.get_metadata("DC", field)
             if items and len(items) > 0:
-                return items[0][0]
+                value: str = items[0][0]
+                return value
         except Exception as e:
             logger.warning(f"Error extracting {field}: {e}")
         return None
@@ -124,7 +125,7 @@ class EPUBParser:
         self._process_epub_content_nav()
 
         # Convert the navigation structure to Chapter objects
-        chapters = []
+        chapters: list[Chapter] = []
         self._build_chapters_from_nav(self.processed_nav_structure, chapters, level=1)
 
         return chapters
@@ -135,7 +136,7 @@ class EPUBParser:
         chapters: list[Chapter],
         parent_id: Optional[str] = None,
         level: int = 1,
-    ):
+    ) -> None:
         """
         Recursively build Chapter objects from navigation structure.
 
@@ -146,16 +147,16 @@ class EPUBParser:
             level: Depth level in the chapter hierarchy
         """
         for _idx, entry in enumerate(nav_structure):
-            src = entry.get("src")
-            title = entry.get("title", "Untitled")
-            children = entry.get("children", [])
+            src: Optional[str] = entry.get("src")
+            title: str = entry.get("title", "Untitled")
+            children: list[dict[str, Any]] = entry.get("children", [])
 
             # Generate a unique ID for this chapter
             chapter_id = src if src else f"chapter_{len(chapters)}"
 
             # Get the text content if available
-            text = self.content_texts.get(src, "")
-            char_count = self.content_lengths.get(src, 0)
+            text = self.content_texts.get(src, "") if src else ""
+            char_count = self.content_lengths.get(src, 0) if src else 0
 
             # Create Chapter object
             chapter = Chapter(
@@ -174,7 +175,7 @@ class EPUBParser:
                     children, chapters, parent_id=chapter_id, level=level + 1
                 )
 
-    def _process_epub_content_nav(self):  # noqa: C901
+    def _process_epub_content_nav(self) -> None:  # noqa: C901
         """
         Process EPUB content using ITEM_NAVIGATION (NAV HTML) or ITEM_NCX.
         Globally orders navigation entries and slices content between them.
@@ -305,7 +306,7 @@ class EPUBParser:
                     self.doc_content[href] = ""
 
         # Extract and order navigation entries
-        ordered_nav_entries = []
+        ordered_nav_entries: list[dict[str, Any]] = []
         self.processed_nav_structure = []
 
         # Parse based on nav_type
@@ -491,7 +492,12 @@ class EPUBParser:
 
         logger.info(f"Finished processing. Found {len(self.content_texts)} sections")
 
-    def _find_doc_key(self, base_href: str, doc_order: dict, doc_order_decoded: dict):
+    def _find_doc_key(
+        self,
+        base_href: str,
+        doc_order: dict[str, int],
+        doc_order_decoded: dict[str, int],
+    ) -> tuple[Optional[str], Optional[int]]:
         """Find the best matching doc_key for a given base_href."""
         import os
 
@@ -512,12 +518,12 @@ class EPUBParser:
 
     def _parse_ncx_navpoint(
         self,
-        nav_point,
-        ordered_entries: list,
-        doc_order: dict,
-        doc_order_decoded: dict,
-        tree_structure_list: list,
-    ):
+        nav_point: Any,
+        ordered_entries: list[dict[str, Any]],
+        doc_order: dict[str, int],
+        doc_order_decoded: dict[str, int],
+        tree_structure_list: list[dict[str, Any]],
+    ) -> None:
         """Parse NCX navPoint recursively."""
         nav_label = nav_point.find("navLabel")
         content = nav_point.find("content")
@@ -528,7 +534,11 @@ class EPUBParser:
         )
         src = content["src"] if content and "src" in content.attrs else None
 
-        current_entry_node = {"title": title, "src": src, "children": []}
+        current_entry_node: dict[str, Any] = {
+            "title": title,
+            "src": src,
+            "children": [],
+        }
 
         if src:
             base_href, fragment = src.split("#", 1) if "#" in src else (src, None)
@@ -573,18 +583,18 @@ class EPUBParser:
 
     def _parse_html_nav_li(
         self,
-        li_element,
-        ordered_entries: list,
-        doc_order: dict,
-        doc_order_decoded: dict,
-        tree_structure_list: list,
-    ):
+        li_element: Any,
+        ordered_entries: list[dict[str, Any]],
+        doc_order: dict[str, int],
+        doc_order_decoded: dict[str, int],
+        tree_structure_list: list[dict[str, Any]],
+    ) -> None:
         """Parse HTML NAV <li> recursively."""
         link = li_element.find("a", recursive=False)
         span_text = li_element.find("span", recursive=False)
         title = "Untitled Section"
-        src = None
-        current_entry_node = {"children": []}
+        src: Optional[str] = None
+        current_entry_node: dict[str, Any] = {"children": []}
 
         if link and "href" in link.attrs:
             src = link["href"]

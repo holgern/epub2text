@@ -15,7 +15,7 @@ class Chapter:
     parent_id: Optional[str] = None
     level: int = 0
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.title} ({self.char_count:,} chars)"
 
 
@@ -36,7 +36,7 @@ class Metadata:
     rights: Optional[str] = None
     coverage: Optional[str] = None
 
-    def __str__(self):
+    def __str__(self) -> str:
         lines = []
         if self.title:
             lines.append(f"Title: {self.title}")

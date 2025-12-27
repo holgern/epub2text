@@ -32,7 +32,7 @@ def parse_chapter_range(range_str: str) -> list[int]:
     Returns:
         List of chapter indices (0-based)
     """
-    indices = set()
+    indices: set[int] = set()
     parts = range_str.split(",")
     for part in parts:
         part = part.strip()
@@ -47,7 +47,7 @@ def parse_chapter_range(range_str: str) -> list[int]:
     return sorted(indices)
 
 
-def display_chapters_tree(chapters: list[Chapter]):
+def display_chapters_tree(chapters: list[Chapter]) -> None:
     """Display chapters in a tree structure."""
     tree = Tree("📚 [bold]Chapters[/bold]")
 
@@ -77,7 +77,7 @@ def display_chapters_tree(chapters: list[Chapter]):
     console.print(tree)
 
 
-def display_chapters_table(chapters: list[Chapter]):
+def display_chapters_table(chapters: list[Chapter]) -> None:
     """Display chapters in a table format."""
     table = Table(title="📚 Chapters", show_header=True, header_style="bold magenta")
     table.add_column("#", style="dim", width=6)
@@ -141,7 +141,7 @@ def interactive_chapter_selection(chapters: list[Chapter]) -> list[str]:
 
 @click.group()
 @click.version_option(version="0.1.0", prog_name="epub2text")
-def cli():
+def cli() -> None:
     """
     epub2text - Extract text from EPUB files with smart cleaning.
 
@@ -150,7 +150,7 @@ def cli():
     pass
 
 
-@cli.command()
+@cli.command(name="list")
 @click.argument("filepath", type=click.Path(exists=True, path_type=Path))
 @click.option(
     "--format",
@@ -159,7 +159,7 @@ def cli():
     default="table",
     help="Display format for chapters",
 )
-def list(filepath: Path, format: str):
+def list_chapters(filepath: Path, format: str) -> None:
     """List all chapters in an EPUB file."""
     try:
         with Progress(
@@ -283,7 +283,7 @@ def extract(
     offset: int,
     limit: Optional[int],
     line_numbers: bool,
-):
+) -> None:
     """
     Extract text from EPUB file.
 
@@ -471,7 +471,7 @@ def extract(
     default="panel",
     help="Display format for metadata (default: panel)",
 )
-def info(filepath: Path, format: str):
+def info(filepath: Path, format: str) -> None:
     """Display metadata information about an EPUB file."""
     try:
         with Progress(
@@ -591,7 +591,7 @@ def info(filepath: Path, format: str):
         sys.exit(1)
 
 
-def main():
+def main() -> None:
     """Main entry point for CLI."""
     cli()
 
