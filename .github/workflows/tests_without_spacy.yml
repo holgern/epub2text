@@ -1,4 +1,4 @@
-name: Run tests
+name: Run tests without spacy
 on: [push]
 jobs:
   run:
@@ -18,5 +18,4 @@ jobs:
         pip install pytest
         pip install -e .
         pip install -r requirements-test.txt
-        python -m spacy download en_core_web_sm
         pytest
