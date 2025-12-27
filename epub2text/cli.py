@@ -16,7 +16,12 @@ from rich.tree import Tree
 
 from . import __version__
 from .cleaner import TextCleaner
-from .formatters import format_paragraphs, format_sentences, split_long_lines
+from .formatters import (
+    format_clauses,
+    format_paragraphs,
+    format_sentences,
+    split_long_lines,
+)
 from .models import Chapter
 from .parser import EPUBParser
 
@@ -214,6 +219,11 @@ def list_chapters(filepath: Path, format: str) -> None:
     help="One line per sentence (uses spaCy)",
 )
 @click.option(
+    "--comma",
+    is_flag=True,
+    help="One line per clause/comma-separated part (uses spaCy)",
+)
+@click.option(
     "--max-length",
     "-m",
     type=int,
@@ -273,6 +283,7 @@ def extract(
     interactive: bool,
     paragraphs: bool,
     sentences: bool,
+    comma: bool,
     max_length: Optional[int],
     empty_lines: bool,
     separator: str,
@@ -296,6 +307,10 @@ def extract(
         epub2text extract book.epub
 
         epub2text extract book.epub --paragraphs --sentences
+
+        epub2text extract book.epub --comma
+
+        epub2text extract book.epub --sentences --comma
 
         epub2text extract book.epub --max-length 80
 
@@ -368,7 +383,51 @@ def extract(
                 progress.stop()
 
         # Apply formatting based on options
-        if sentences:
+        # When both --sentences and --comma are used, apply sentences first,
+        # then clauses (results in more granular splitting with empty line separation)
+        if sentences and comma:
+            # First split by sentences, then by clauses
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                progress.add_task("Formatting sentences and clauses...", total=None)
+                try:
+                    text = format_sentences(
+                        text,
+                        separator=effective_separator,
+                        language_model=language_model,
+                    )
+                    # Add empty line between what were sentences, now split by clauses
+                    text = format_clauses(
+                        text,
+                        separator=effective_separator,
+                        language_model=language_model,
+                    )
+                except (ImportError, OSError) as e:
+                    console.print(f"[red]Error: {e}[/red]")
+                    sys.exit(1)
+                progress.stop()
+        elif comma:
+            # One clause per line (split at commas, semicolons, etc.)
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                progress.add_task("Formatting clauses...", total=None)
+                try:
+                    text = format_clauses(
+                        text,
+                        separator=effective_separator,
+                        language_model=language_model,
+                    )
+                except (ImportError, OSError) as e:
+                    console.print(f"[red]Error: {e}[/red]")
+                    sys.exit(1)
+                progress.stop()
+        elif sentences:
             # One sentence per line
             with Progress(
                 SpinnerColumn(),

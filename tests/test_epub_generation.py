@@ -948,7 +948,7 @@ class TestFormatters:
 
     def test_split_at_clauses_preserves_all_text(self) -> None:
         """Test that _split_at_clauses doesn't lose any text."""
-        from epub2text.formatters import _split_at_clauses
+        from phrasplit.splitter import _split_at_clauses
 
         text = (
             "When the professor picked up the ancient manuscript for the "
@@ -967,7 +967,7 @@ class TestFormatters:
 
     def test_split_at_clauses_no_trailing_comma(self) -> None:
         """Test that _split_at_clauses doesn't produce lines ending with just comma."""
-        from epub2text.formatters import _split_at_clauses
+        from phrasplit.splitter import _split_at_clauses
 
         text = (
             "When the professor picked up the ancient manuscript for the "
@@ -1100,3 +1100,110 @@ Second line of para two."""
         assert len(lines) == 1
         assert "waited" in result
         assert "arrived" in result
+
+    @requires_spacy
+    def test_format_clauses_splits_at_comma(self) -> None:
+        """Test that format_clauses splits at comma boundaries."""
+        from epub2text.formatters import format_clauses
+
+        text = "I do like coffee, and I like wine."
+
+        result = format_clauses(text, separator="")
+
+        lines = result.split("\n")
+        assert len(lines) == 2
+        assert lines[0] == "I do like coffee,"
+        assert lines[1] == "and I like wine."
+
+    @requires_spacy
+    def test_format_clauses_splits_at_semicolon(self) -> None:
+        """Test that format_clauses splits at semicolon boundaries."""
+        from epub2text.formatters import format_clauses
+
+        # phrasplit only splits at commas, not semicolons
+        # Semicolons are kept within a single line
+        text = "First clause here; second clause follows."
+
+        result = format_clauses(text, separator="")
+
+        lines = result.split("\n")
+        # phrasplit does not split at semicolons
+        assert len(lines) == 1
+        assert lines[0] == "First clause here; second clause follows."
+
+    @requires_spacy
+    def test_format_clauses_multiple_sentences(self) -> None:
+        """Test format_clauses with multiple sentences containing clauses."""
+        from epub2text.formatters import format_clauses
+
+        text = "I like tea, but prefer coffee. She likes water, and juice."
+
+        result = format_clauses(text, separator="")
+
+        lines = result.split("\n")
+        # Should have 4 clauses total (2 per sentence)
+        assert len(lines) == 4
+        assert "I like tea," in lines[0]
+        assert "but prefer coffee." in lines[1]
+        assert "She likes water," in lines[2]
+        assert "and juice." in lines[3]
+
+    @requires_spacy
+    def test_format_clauses_preserves_text(self) -> None:
+        """Test that format_clauses doesn't lose any text."""
+        from epub2text.formatters import format_clauses
+
+        text = "When the sun rises, the birds sing, and the world awakens."
+
+        result = format_clauses(text, separator="")
+        joined = " ".join(result.split("\n"))
+
+        # All words should be preserved
+        assert "sun rises" in joined
+        assert "birds sing" in joined
+        assert "world awakens" in joined
+
+    @requires_spacy
+    def test_format_clauses_with_separator(self) -> None:
+        """Test that format_clauses adds separator at paragraph boundaries."""
+        from epub2text.formatters import format_clauses
+
+        text = """First paragraph, with a clause.
+
+Second paragraph, also with clause."""
+
+        result = format_clauses(text, separator=">>")
+
+        lines = result.split("\n")
+        # First paragraph clauses should not have separator
+        assert not lines[0].startswith(">>")
+        # Second paragraph first clause should have separator
+        assert any(line.startswith(">>") for line in lines)
+
+    @requires_spacy
+    def test_format_clauses_no_comma_sentence(self) -> None:
+        """Test format_clauses with a sentence that has no commas."""
+        from epub2text.formatters import format_clauses
+
+        text = "This is a simple sentence without any commas."
+
+        result = format_clauses(text, separator="")
+
+        lines = result.split("\n")
+        # Should remain as one line
+        assert len(lines) == 1
+        assert lines[0] == text
+
+    @requires_spacy
+    def test_format_clauses_ellipsis_not_split(self) -> None:
+        """Test that ellipsis doesn't cause incorrect splitting in clauses."""
+        from epub2text.formatters import format_clauses
+
+        text = "He thought... and then, he decided to leave."
+
+        result = format_clauses(text, separator="")
+
+        # Ellipsis should be preserved, split only at comma
+        assert ". . ." in result or "..." in result
+        lines = result.split("\n")
+        assert len(lines) == 2  # Split at comma only
