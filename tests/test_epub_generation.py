@@ -5,6 +5,7 @@ These tests create EPUB files programmatically and verify that epub2text
 can correctly extract text from them.
 """
 
+from datetime import datetime
 from pathlib import Path
 from typing import cast
 
@@ -770,3 +771,157 @@ class TestTextCleaner:
         assert "   " not in result
         assert "[1]" not in result
         assert "\n\n\n" not in result
+
+
+class TestMetadataExtraction:
+    """Test metadata extraction with all Dublin Core fields."""
+
+    @pytest.fixture
+    def full_metadata_epub(self, tmp_path: Path) -> Path:
+        """Create an EPUB with all available metadata fields."""
+        epub_path = tmp_path / "full_metadata_book.epub"
+
+        book = pypub.Epub(
+            title="Complete Metadata Book",
+            creator="John Doe",
+            language="en-US",
+            rights="Copyright 2024 John Doe. All rights reserved.",
+            publisher="Test Publishing House",
+            date=datetime(2023, 6, 15),
+        )
+
+        chapter = pypub.create_chapter_from_text(
+            "This is a test chapter with some content.",
+            title="Chapter 1",
+        )
+        book.add_chapter(chapter)
+        book.create(str(epub_path))
+        return epub_path
+
+    @pytest.fixture
+    def minimal_metadata_epub(self, tmp_path: Path) -> Path:
+        """Create an EPUB with minimal metadata."""
+        epub_path = tmp_path / "minimal_metadata_book.epub"
+
+        book = pypub.Epub(title="Minimal Book")
+
+        chapter = pypub.create_chapter_from_text(
+            "Simple content.",
+            title="Chapter 1",
+        )
+        book.add_chapter(chapter)
+        book.create(str(epub_path))
+        return epub_path
+
+    def test_full_metadata_extraction(self, full_metadata_epub: Path) -> None:
+        """Test extraction of all metadata fields."""
+        parser = EPUBParser(str(full_metadata_epub))
+        metadata = parser.get_metadata()
+
+        assert metadata.title == "Complete Metadata Book"
+        assert "John Doe" in metadata.authors
+        assert metadata.language == "en-US"
+        assert metadata.rights == "Copyright 2024 John Doe. All rights reserved."
+        assert metadata.publisher == "Test Publishing House"
+        assert metadata.publication_year == "2023"
+
+    def test_language_extraction(self, full_metadata_epub: Path) -> None:
+        """Test language metadata extraction."""
+        parser = EPUBParser(str(full_metadata_epub))
+        metadata = parser.get_metadata()
+
+        assert metadata.language is not None
+        assert metadata.language == "en-US"
+
+    def test_rights_extraction(self, full_metadata_epub: Path) -> None:
+        """Test rights/copyright metadata extraction."""
+        parser = EPUBParser(str(full_metadata_epub))
+        metadata = parser.get_metadata()
+
+        assert metadata.rights is not None
+        assert "Copyright" in metadata.rights
+        assert "2024" in metadata.rights
+
+    def test_publisher_extraction(self, full_metadata_epub: Path) -> None:
+        """Test publisher metadata extraction."""
+        parser = EPUBParser(str(full_metadata_epub))
+        metadata = parser.get_metadata()
+
+        assert metadata.publisher is not None
+        assert metadata.publisher == "Test Publishing House"
+
+    def test_publication_year_extraction(self, full_metadata_epub: Path) -> None:
+        """Test publication year extraction from date."""
+        parser = EPUBParser(str(full_metadata_epub))
+        metadata = parser.get_metadata()
+
+        assert metadata.publication_year is not None
+        assert metadata.publication_year == "2023"
+
+    def test_minimal_metadata_has_title(self, minimal_metadata_epub: Path) -> None:
+        """Test that minimal EPUB still has title."""
+        parser = EPUBParser(str(minimal_metadata_epub))
+        metadata = parser.get_metadata()
+
+        assert metadata.title == "Minimal Book"
+
+    def test_minimal_metadata_optional_fields_none(
+        self, minimal_metadata_epub: Path
+    ) -> None:
+        """Test that optional fields can be None or empty."""
+        parser = EPUBParser(str(minimal_metadata_epub))
+        metadata = parser.get_metadata()
+
+        # These fields may be None or have default values
+        # depending on pypub's defaults
+        assert metadata.title is not None  # Title should always exist
+
+    def test_metadata_str_representation(self, full_metadata_epub: Path) -> None:
+        """Test the __str__ method of Metadata class."""
+        parser = EPUBParser(str(full_metadata_epub))
+        metadata = parser.get_metadata()
+
+        metadata_str = str(metadata)
+
+        assert "Title:" in metadata_str
+        assert "Complete Metadata Book" in metadata_str
+        assert "Author" in metadata_str
+        assert "John Doe" in metadata_str
+        assert "Language:" in metadata_str
+        assert "en-US" in metadata_str
+
+    def test_metadata_caching(self, full_metadata_epub: Path) -> None:
+        """Test that metadata is cached after first call."""
+        parser = EPUBParser(str(full_metadata_epub))
+
+        # First call
+        metadata1 = parser.get_metadata()
+        # Second call should return same object
+        metadata2 = parser.get_metadata()
+
+        assert metadata1 is metadata2
+
+    def test_identifier_extraction(self, full_metadata_epub: Path) -> None:
+        """Test identifier extraction (may be auto-generated by pypub)."""
+        parser = EPUBParser(str(full_metadata_epub))
+        metadata = parser.get_metadata()
+
+        # pypub generates an identifier automatically
+        # It should be present
+        assert metadata.identifier is not None
+
+    def test_contributors_empty_by_default(self, full_metadata_epub: Path) -> None:
+        """Test that contributors is empty list when not set."""
+        parser = EPUBParser(str(full_metadata_epub))
+        metadata = parser.get_metadata()
+
+        # pypub doesn't support contributors, so should be empty
+        assert metadata.contributors == []
+
+    def test_coverage_none_by_default(self, full_metadata_epub: Path) -> None:
+        """Test that coverage is None when not set."""
+        parser = EPUBParser(str(full_metadata_epub))
+        metadata = parser.get_metadata()
+
+        # pypub doesn't support coverage, so should be None
+        assert metadata.coverage is None

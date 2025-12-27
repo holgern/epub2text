@@ -420,7 +420,14 @@ def extract(
 
 @cli.command()
 @click.argument("filepath", type=click.Path(exists=True, path_type=Path))
-def info(filepath: Path):
+@click.option(
+    "--format",
+    "-f",
+    type=click.Choice(["panel", "table", "json"]),
+    default="panel",
+    help="Display format for metadata (default: panel)",
+)
+def info(filepath: Path, format: str):
     """Display metadata information about an EPUB file."""
     try:
         with Progress(
@@ -434,33 +441,106 @@ def info(filepath: Path):
             chapters = parser.get_chapters()
             progress.stop()
 
-        # Display metadata in a panel
-        info_lines = []
-        if metadata.title:
-            info_lines.append(f"[bold]Title:[/bold] {metadata.title}")
-        if metadata.authors:
-            authors_str = ", ".join(metadata.authors)
-            info_lines.append(f"[bold]Authors:[/bold] {authors_str}")
-        if metadata.publisher:
-            info_lines.append(f"[bold]Publisher:[/bold] {metadata.publisher}")
-        if metadata.publication_year:
-            info_lines.append(f"[bold]Year:[/bold] {metadata.publication_year}")
-        if metadata.description:
-            desc = (
-                metadata.description[:200] + "..."
-                if len(metadata.description) > 200
-                else metadata.description
-            )
-            info_lines.append(f"[bold]Description:[/bold] {desc}")
-
-        info_lines.append(f"\n[bold]Chapters:[/bold] {len(chapters)}")
+        # Calculate summary stats
         total_chars = sum(ch.char_count for ch in chapters)
-        info_lines.append(f"[bold]Total Characters:[/bold] {total_chars:,}")
 
-        panel = Panel(
-            "\n".join(info_lines), title=f"📖 {filepath.name}", border_style="cyan"
-        )
-        console.print(panel)
+        if format == "table":
+            # Display as table
+            table = Table(
+                title=f"📖 {filepath.name}",
+                show_header=True,
+                header_style="bold magenta",
+            )
+            table.add_column("Field", style="cyan")
+            table.add_column("Value", style="white")
+
+            if metadata.title:
+                table.add_row("Title", metadata.title)
+            if metadata.authors:
+                table.add_row("Authors", ", ".join(metadata.authors))
+            if metadata.contributors:
+                table.add_row("Contributors", ", ".join(metadata.contributors))
+            if metadata.publisher:
+                table.add_row("Publisher", metadata.publisher)
+            if metadata.publication_year:
+                table.add_row("Year", metadata.publication_year)
+            if metadata.identifier:
+                table.add_row("Identifier", metadata.identifier)
+            if metadata.language:
+                table.add_row("Language", metadata.language)
+            if metadata.rights:
+                table.add_row("Rights", metadata.rights)
+            if metadata.coverage:
+                table.add_row("Coverage", metadata.coverage)
+            if metadata.description:
+                desc = (
+                    metadata.description[:200] + "..."
+                    if len(metadata.description) > 200
+                    else metadata.description
+                )
+                table.add_row("Description", desc)
+            table.add_row("Chapters", str(len(chapters)))
+            table.add_row("Total Characters", f"{total_chars:,}")
+
+            console.print(table)
+        elif format == "json":
+            # Display as JSON
+            import json
+
+            data = {
+                "file": filepath.name,
+                "title": metadata.title,
+                "authors": metadata.authors,
+                "contributors": metadata.contributors,
+                "publisher": metadata.publisher,
+                "publication_year": metadata.publication_year,
+                "identifier": metadata.identifier,
+                "language": metadata.language,
+                "rights": metadata.rights,
+                "coverage": metadata.coverage,
+                "description": metadata.description,
+                "chapters": len(chapters),
+                "total_characters": total_chars,
+            }
+            print(json.dumps(data, indent=2, ensure_ascii=False))
+        else:
+            # Display as panel (default)
+            info_lines = []
+            if metadata.title:
+                info_lines.append(f"[bold]Title:[/bold] {metadata.title}")
+            if metadata.authors:
+                authors_str = ", ".join(metadata.authors)
+                info_lines.append(f"[bold]Authors:[/bold] {authors_str}")
+            if metadata.contributors:
+                contributors_str = ", ".join(metadata.contributors)
+                info_lines.append(f"[bold]Contributors:[/bold] {contributors_str}")
+            if metadata.publisher:
+                info_lines.append(f"[bold]Publisher:[/bold] {metadata.publisher}")
+            if metadata.publication_year:
+                info_lines.append(f"[bold]Year:[/bold] {metadata.publication_year}")
+            if metadata.identifier:
+                info_lines.append(f"[bold]Identifier:[/bold] {metadata.identifier}")
+            if metadata.language:
+                info_lines.append(f"[bold]Language:[/bold] {metadata.language}")
+            if metadata.rights:
+                info_lines.append(f"[bold]Rights:[/bold] {metadata.rights}")
+            if metadata.coverage:
+                info_lines.append(f"[bold]Coverage:[/bold] {metadata.coverage}")
+            if metadata.description:
+                desc = (
+                    metadata.description[:200] + "..."
+                    if len(metadata.description) > 200
+                    else metadata.description
+                )
+                info_lines.append(f"[bold]Description:[/bold] {desc}")
+
+            info_lines.append(f"\n[bold]Chapters:[/bold] {len(chapters)}")
+            info_lines.append(f"[bold]Total Characters:[/bold] {total_chars:,}")
+
+            panel = Panel(
+                "\n".join(info_lines), title=f"📖 {filepath.name}", border_style="cyan"
+            )
+            console.print(panel)
 
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")

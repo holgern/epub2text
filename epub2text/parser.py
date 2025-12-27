@@ -78,6 +78,11 @@ class EPUBParser:
             "description": None,
             "publisher": None,
             "publication_year": None,
+            "identifier": None,
+            "language": None,
+            "contributors": [],
+            "rights": None,
+            "coverage": None,
         }
 
         # Extract title
@@ -126,6 +131,50 @@ class EPUBParser:
                     metadata_dict["publication_year"] = date_str
         except Exception as e:
             logger.warning(f"Error extracting publication date: {e}")
+
+        # Extract identifier (ISBN, UUID, etc.) - Required for EPUB3
+        try:
+            identifier_items = self.book.get_metadata("DC", "identifier")
+            if identifier_items and len(identifier_items) > 0:
+                metadata_dict["identifier"] = identifier_items[0][0]
+        except Exception as e:
+            logger.warning(f"Error extracting identifier: {e}")
+
+        # Extract language - Required for EPUB3
+        try:
+            language_items = self.book.get_metadata("DC", "language")
+            if language_items and len(language_items) > 0:
+                metadata_dict["language"] = language_items[0][0]
+        except Exception as e:
+            logger.warning(f"Error extracting language: {e}")
+
+        # Extract contributors
+        try:
+            contributor_items = self.book.get_metadata("DC", "contributor")
+            if contributor_items:
+                metadata_dict["contributors"] = [
+                    contributor[0]
+                    for contributor in contributor_items
+                    if len(contributor) > 0
+                ]
+        except Exception as e:
+            logger.warning(f"Error extracting contributors: {e}")
+
+        # Extract rights (copyright info)
+        try:
+            rights_items = self.book.get_metadata("DC", "rights")
+            if rights_items and len(rights_items) > 0:
+                metadata_dict["rights"] = rights_items[0][0]
+        except Exception as e:
+            logger.warning(f"Error extracting rights: {e}")
+
+        # Extract coverage
+        try:
+            coverage_items = self.book.get_metadata("DC", "coverage")
+            if coverage_items and len(coverage_items) > 0:
+                metadata_dict["coverage"] = coverage_items[0][0]
+        except Exception as e:
+            logger.warning(f"Error extracting coverage: {e}")
 
         self._metadata = Metadata(**metadata_dict)
         return self._metadata

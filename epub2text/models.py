@@ -28,6 +28,13 @@ class Metadata:
     publisher: Optional[str] = None
     publication_year: Optional[str] = None
     description: Optional[str] = None
+    # Required EPUB3 metadata
+    identifier: Optional[str] = None
+    language: Optional[str] = None
+    # Optional Dublin Core metadata
+    contributors: list[str] = field(default_factory=list)
+    rights: Optional[str] = None
+    coverage: Optional[str] = None
 
     def __str__(self):
         lines = []
@@ -35,10 +42,20 @@ class Metadata:
             lines.append(f"Title: {self.title}")
         if self.authors:
             lines.append(f"Author(s): {', '.join(self.authors)}")
+        if self.contributors:
+            lines.append(f"Contributor(s): {', '.join(self.contributors)}")
         if self.publisher:
             lines.append(f"Publisher: {self.publisher}")
         if self.publication_year:
             lines.append(f"Year: {self.publication_year}")
+        if self.identifier:
+            lines.append(f"Identifier: {self.identifier}")
+        if self.language:
+            lines.append(f"Language: {self.language}")
+        if self.rights:
+            lines.append(f"Rights: {self.rights}")
+        if self.coverage:
+            lines.append(f"Coverage: {self.coverage}")
         if self.description:
             desc = (
                 self.description[:200] + "..."
