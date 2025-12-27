@@ -8,5 +8,4 @@ pytest-cov
 coverage
 tox
 pypub3
-spacy
 lxml
