@@ -7,11 +7,16 @@ A niche CLI tool to extract text from EPUB files with smart cleaning capabilitie
 - **Smart Navigation Parsing**: Supports both EPUB3 (NAV HTML) and EPUB2 (NCX)
   navigation formats
 - **Selective Extraction**: Extract specific chapters by range or interactive selection
+- **Flexible Output Formatting**:
+  - One paragraph per line with customizable separators
+  - One sentence per line using spaCy NLP
+  - Automatic line splitting at clause boundaries for long lines
 - **Smart Text Cleaning**:
   - Remove bracketed footnotes (`[1]`, `[42]`)
   - Remove page numbers (standalone, at line ends, with dashes)
   - Normalize whitespace and paragraph breaks
   - Preserve ordered lists with proper numbering
+- **Full Dublin Core Metadata**: Extract all EPUB metadata fields
 - **Rich Interactive UI**: Beautiful terminal output with tables and tree views
 - **Pipe-Friendly**: Works as both CLI tool and Python library
 - **Nested Chapter Support**: Handles hierarchical chapter structures
@@ -26,6 +31,13 @@ For better HTML parsing performance (optional):
 
 ```bash
 pip install epub2text[lxml]
+```
+
+For sentence-level formatting (requires spaCy):
+
+```bash
+pip install epub2text[sentences]
+python -m spacy download en_core_web_sm
 ```
 
 ### Development Installation
@@ -86,17 +98,52 @@ Interactive chapter selection:
 epub2text extract book.epub --interactive
 ```
 
-Disable smart cleaning:
+**Output Formatting:**
 
 ```bash
-# Keep everything (no cleaning)
-epub2text extract book.epub --no-clean
+# One line per paragraph
+epub2text extract book.epub --paragraphs
 
-# Keep footnotes
+# One line per sentence (requires spaCy)
+epub2text extract book.epub --sentences
+
+# Split long lines at clause boundaries
+epub2text extract book.epub --max-length 80
+
+# Use empty lines between paragraphs
+epub2text extract book.epub --empty-lines
+
+# Custom paragraph separator
+epub2text extract book.epub --separator "\t"
+```
+
+**Text Cleaning Options:**
+
+```bash
+# Disable all cleaning (raw output)
+epub2text extract book.epub --raw
+
+# Keep bracketed footnotes like [1]
 epub2text extract book.epub --keep-footnotes
 
 # Keep page numbers
 epub2text extract book.epub --keep-page-numbers
+
+# Hide chapter markers
+epub2text extract book.epub --no-markers
+```
+
+**Output Control:**
+
+```bash
+# Skip first 10 lines
+epub2text extract book.epub --offset 10
+
+# Limit to 100 lines
+epub2text extract book.epub --limit 100
+
+# Add line numbers
+epub2text extract book.epub --line-numbers
 ```
 
 #### Show Metadata
@@ -104,7 +151,14 @@ epub2text extract book.epub --keep-page-numbers
 Display EPUB metadata and statistics:
 
 ```bash
+# Panel format (default)
 epub2text info book.epub
+
+# Table format
+epub2text info book.epub --format table
+
+# JSON format (for scripting)
+epub2text info book.epub --format json
 ```
 
 ### Python Library
@@ -121,6 +175,8 @@ parser = EPUBParser("book.epub")
 metadata = parser.get_metadata()
 print(f"Title: {metadata.title}")
 print(f"Authors: {', '.join(metadata.authors)}")
+print(f"Language: {metadata.language}")
+print(f"Identifier: {metadata.identifier}")
 
 # Get all chapters
 chapters = parser.get_chapters()
@@ -153,6 +209,22 @@ cleaner = TextCleaner(
 cleaned_text = cleaner.clean(text)
 ```
 
+With sentence formatting:
+
+```python
+from epub2text import EPUBParser
+from epub2text.formatters import format_sentences, split_long_lines
+
+parser = EPUBParser("book.epub")
+text = parser.extract_chapters()
+
+# One sentence per line
+formatted = format_sentences(text)
+
+# Or split long lines at clause boundaries
+split_text = split_long_lines(text, max_length=80)
+```
+
 ## Smart Cleaning Features
 
 The smart text cleaner applies the following transformations by default:
@@ -182,6 +254,8 @@ Chapter text content here...
 More content...
 ```
 
+Use `--no-markers` to hide chapter markers.
+
 ## Requirements
 
 - Python >= 3.9
@@ -190,6 +264,7 @@ More content...
 - ebooklib >= 0.18
 - beautifulsoup4 >= 4.12.0
 - lxml >= 4.9.0 (optional, for better performance)
+- spacy >= 3.0.0 (optional, for sentence formatting)
 
 ## Technical Details
 
@@ -212,6 +287,25 @@ The parser uses a sophisticated navigation-based approach:
 - **Fragment IDs**: Robust position detection using BeautifulSoup, regex, and string
   search
 - **Nested Structures**: Handles hierarchical chapter organization
+
+### Metadata Support
+
+Full Dublin Core metadata extraction:
+
+- Title
+- Authors (creators)
+- Contributors
+- Publisher
+- Publication Year
+- Identifier (ISBN, UUID, etc.)
+- Language
+- Rights (copyright)
+- Coverage
+- Description
+
+## Documentation
+
+Full documentation is available at [Read the Docs](https://epub2text.readthedocs.io/).
 
 ## Contributing
 
