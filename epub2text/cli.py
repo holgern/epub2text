@@ -220,6 +220,34 @@ def list(filepath: Path, format: str):
     default="en_core_web_sm",
     help="spaCy language model for sentence formatting (default: en_core_web_sm)",
 )
+@click.option(
+    "--offset",
+    type=int,
+    default=0,
+    help="Skip the first N lines of output (0-based, default: 0)",
+)
+@click.option(
+    "--limit",
+    type=int,
+    default=None,
+    help="Limit output to N lines (default: no limit)",
+)
+@click.option(
+    "--line-numbers",
+    "-n",
+    is_flag=True,
+    help="Add line numbers to output",
+)
+@click.option(
+    "--no-chapter-titles",
+    is_flag=True,
+    help="Hide <<CHAPTER: ...>> markers from output",
+)
+@click.option(
+    "--no-empty-lines",
+    is_flag=True,
+    help="Remove empty lines from output",
+)
 def extract(
     filepath: Path,
     output: Optional[Path],
@@ -230,12 +258,18 @@ def extract(
     keep_footnotes: bool,
     keep_page_numbers: bool,
     language_model: str,
+    offset: int,
+    limit: Optional[int],
+    line_numbers: bool,
+    no_chapter_titles: bool,
+    no_empty_lines: bool,
 ):
     """
     Extract text from EPUB file.
 
     By default, extracts all chapters with smart cleaning enabled.
     Use --chapters to specify a range, or --interactive for selection UI.
+    Use --offset and --limit to control which lines are output.
     """
     try:
         # Validate format-style and no-clean combination
@@ -327,6 +361,47 @@ def extract(
                     console.print(f"[red]Error: {e}[/red]")
                     sys.exit(1)
                 progress.stop()
+
+        # Remove chapter markers if requested
+        if no_chapter_titles:
+            import re
+
+            text = re.sub(r"<<CHAPTER:[^>]*>>\n*", "", text)
+
+        # Remove empty lines if requested
+        if no_empty_lines:
+            lines = text.splitlines()
+            lines = [line for line in lines if line.strip()]
+            text = "\n".join(lines)
+
+        # Apply offset and limit to lines
+        if offset > 0 or limit is not None or line_numbers:
+            lines = text.splitlines()
+            total_lines = len(lines)
+
+            # Apply offset
+            if offset > 0:
+                if offset >= total_lines:
+                    lines = []
+                else:
+                    lines = lines[offset:]
+
+            # Apply limit
+            if limit is not None and limit > 0:
+                lines = lines[:limit]
+
+            # Add line numbers if requested
+            if line_numbers:
+                # Calculate width needed for line numbers
+                # Start numbering from offset + 1 (1-based)
+                start_line = offset + 1
+                end_line = start_line + len(lines)
+                width = len(str(end_line))
+                lines = [
+                    f"{start_line + i:{width}d}\t{line}" for i, line in enumerate(lines)
+                ]
+
+            text = "\n".join(lines)
 
         # Output
         if output:
