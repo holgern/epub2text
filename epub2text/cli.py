@@ -14,6 +14,7 @@ from rich.prompt import Confirm, Prompt
 from rich.table import Table
 from rich.tree import Tree
 
+from . import __version__
 from .cleaner import TextCleaner
 from .formatters import format_paragraphs, format_sentences, split_long_lines
 from .models import Chapter
@@ -140,7 +141,7 @@ def interactive_chapter_selection(chapters: list[Chapter]) -> list[str]:
 
 
 @click.group()
-@click.version_option(version="0.1.0", prog_name="epub2text")
+@click.version_option(version=__version__, prog_name="epub2text")
 def cli() -> None:
     """
     epub2text - Extract text from EPUB files with smart cleaning.
