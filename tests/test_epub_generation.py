@@ -9,9 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import cast
 
-import pytest
-
 import pypub  # type: ignore[import-untyped]
+import pytest
 
 from epub2text import EPUBParser, epub2txt
 
@@ -607,8 +606,12 @@ class TestFormatStyles:
         cleaned_readable = cleaner_readable.clean(text_readable)
 
         # Count non-empty lines
-        compact_lines = len([l for l in cleaned_compact.split("\n") if l.strip()])
-        readable_lines = len([l for l in cleaned_readable.split("\n") if l.strip()])
+        compact_lines = len(
+            [line for line in cleaned_compact.split("\n") if line.strip()]
+        )
+        readable_lines = len(
+            [line for line in cleaned_readable.split("\n") if line.strip()]
+        )
 
         # Compact should have at least as many lines (typically more due to
         # single newline separation)
@@ -735,7 +738,7 @@ class TestTextCleaner:
         result = cleaner.clean(text)
 
         # Standalone "42" should be removed
-        lines = [l.strip() for l in result.split("\n") if l.strip()]
+        lines = [line.strip() for line in result.split("\n") if line.strip()]
         assert "42" not in lines
 
     def test_normalize_whitespace(self) -> None:
@@ -925,3 +928,157 @@ class TestMetadataExtraction:
 
         # pypub doesn't support coverage, so should be None
         assert metadata.coverage is None
+
+
+class TestFormatters:
+    """Test text formatting functions."""
+
+    def test_split_at_clauses_preserves_all_text(self) -> None:
+        """Test that _split_at_clauses doesn't lose any text."""
+        from epub2text.formatters import _split_at_clauses
+
+        text = (
+            "When the professor picked up the ancient manuscript for the "
+            "ninth time, Sarah whispered, 'You will find the answer in the margins.'"
+        )
+
+        result = _split_at_clauses(text, max_length=80)
+        joined = " ".join(result)
+
+        # All words from original should be in result
+        assert "professor" in joined
+        assert "manuscript" in joined
+        assert "ninth time" in joined
+        assert "Sarah whispered" in joined
+        assert "margins" in joined
+
+    def test_split_at_clauses_no_trailing_comma(self) -> None:
+        """Test that _split_at_clauses doesn't produce lines ending with just comma."""
+        from epub2text.formatters import _split_at_clauses
+
+        text = (
+            "When the professor picked up the ancient manuscript for the "
+            "ninth time, Sarah whispered, 'You will find the answer in the margins.'"
+        )
+
+        result = _split_at_clauses(text, max_length=80)
+
+        # No line should end with just a comma (indicates lost text)
+        for line in result:
+            assert not line.rstrip().endswith(", ,"), f"Line ends with ', ,': {line}"
+            # Line shouldn't be just punctuation
+            stripped = line.strip()
+            assert len(stripped) > 2, f"Line too short: {line}"
+
+    def test_split_long_lines_preserves_text(self) -> None:
+        """Test that split_long_lines doesn't lose any text."""
+        from epub2text.formatters import split_long_lines
+
+        text = (
+            "  When the professor picked up the ancient manuscript for the "
+            "ninth time, Sarah whispered, 'You will find the answer in the margins.'"
+        )
+
+        result = split_long_lines(text, max_length=80, separator="  ")
+        joined = " ".join(result.split("\n"))
+
+        # All key words should be preserved
+        assert "professor" in joined
+        assert "manuscript" in joined
+        assert "Sarah" in joined
+        assert "margins" in joined
+
+    def test_split_long_lines_respects_max_length(self) -> None:
+        """Test that split_long_lines produces lines within max_length."""
+        from epub2text.formatters import split_long_lines
+
+        text = (
+            "This is a very long sentence that contains many words and should be "
+            "split at clause boundaries when it exceeds the maximum line length "
+            "specified by the user."
+        )
+
+        result = split_long_lines(text, max_length=60, separator="")
+
+        for line in result.split("\n"):
+            # Allow some tolerance for edge cases
+            assert len(line) <= 80, f"Line too long ({len(line)}): {line}"
+
+    def test_format_sentences_preserves_text(self) -> None:
+        """Test that format_sentences doesn't lose any text."""
+        from epub2text.formatters import format_sentences
+
+        text = """First paragraph with one sentence.
+
+Second paragraph has two sentences. Here is the second one.
+
+Third paragraph ends the test."""
+
+        result = format_sentences(text, separator="  ")
+
+        # All sentences should be present
+        assert "First paragraph" in result
+        assert "Second paragraph" in result
+        assert "second one" in result
+        assert "Third paragraph" in result
+
+    def test_format_paragraphs_adds_separator(self) -> None:
+        """Test that format_paragraphs adds separator to new paragraphs."""
+        from epub2text.formatters import format_paragraphs
+
+        text = """First paragraph.
+
+Second paragraph.
+
+Third paragraph."""
+
+        result = format_paragraphs(text, separator=">>")
+
+        lines = result.split("\n")
+        assert lines[0] == "First paragraph."  # No separator on first
+        assert lines[1] == ">>Second paragraph."  # Separator on second
+        assert lines[2] == ">>Third paragraph."  # Separator on third
+
+    def test_format_paragraphs_one_line_mode(self) -> None:
+        """Test that format_paragraphs collapses paragraphs to single lines."""
+        from epub2text.formatters import format_paragraphs
+
+        text = """First line of para one.
+Second line of para one.
+
+First line of para two.
+Second line of para two."""
+
+        result = format_paragraphs(text, separator="  ", one_line_per_paragraph=True)
+
+        lines = result.split("\n")
+        assert len(lines) == 2
+        assert "First line of para one. Second line of para one." in lines[0]
+        assert "First line of para two. Second line of para two." in lines[1]
+
+    def test_format_sentences_ellipsis_not_sentence_boundary(self) -> None:
+        """Test that ellipsis (. . . or ...) does not create sentence boundary."""
+        from epub2text.formatters import format_sentences
+
+        text = "He paused and thought . . . then continued speaking."
+
+        result = format_sentences(text, separator="  ")
+
+        # Should be one sentence, not split at ellipsis
+        lines = result.split("\n")
+        assert len(lines) == 1
+        assert "thought . . . then" in result or "thought ... then" in result
+
+    def test_format_sentences_ellipsis_three_dots(self) -> None:
+        """Test that three dots ellipsis (...) does not create sentence boundary."""
+        from epub2text.formatters import format_sentences
+
+        text = "She waited... and waited... until finally he arrived."
+
+        result = format_sentences(text, separator="  ")
+
+        # Should be one sentence
+        lines = result.split("\n")
+        assert len(lines) == 1
+        assert "waited" in result
+        assert "arrived" in result

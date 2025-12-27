@@ -62,6 +62,26 @@ class EPUBParser:
         except Exception as e:
             raise ValueError(f"Failed to read EPUB file: {e}") from e
 
+    def _get_single_metadata(self, field: str) -> Optional[str]:
+        """Extract a single metadata value from Dublin Core field."""
+        try:
+            items = self.book.get_metadata("DC", field)
+            if items and len(items) > 0:
+                return items[0][0]
+        except Exception as e:
+            logger.warning(f"Error extracting {field}: {e}")
+        return None
+
+    def _get_list_metadata(self, field: str) -> list[str]:
+        """Extract a list of metadata values from Dublin Core field."""
+        try:
+            items = self.book.get_metadata("DC", field)
+            if items:
+                return [item[0] for item in items if len(item) > 0]
+        except Exception as e:
+            logger.warning(f"Error extracting {field}: {e}")
+        return []
+
     def get_metadata(self) -> Metadata:
         """
         Extract metadata from EPUB.
@@ -72,111 +92,25 @@ class EPUBParser:
         if self._metadata is not None:
             return self._metadata
 
-        metadata_dict = {
-            "title": None,
-            "authors": [],
-            "description": None,
-            "publisher": None,
-            "publication_year": None,
-            "identifier": None,
-            "language": None,
-            "contributors": [],
-            "rights": None,
-            "coverage": None,
-        }
+        # Extract publication year with special date parsing
+        publication_year = None
+        date_str = self._get_single_metadata("date")
+        if date_str:
+            year_match = re.search(r"\b(19|20)\d{2}\b", date_str)
+            publication_year = year_match.group(0) if year_match else date_str
 
-        # Extract title
-        try:
-            title_items = self.book.get_metadata("DC", "title")
-            if title_items and len(title_items) > 0:
-                metadata_dict["title"] = title_items[0][0]
-        except Exception as e:
-            logger.warning(f"Error extracting title: {e}")
-
-        # Extract authors
-        try:
-            author_items = self.book.get_metadata("DC", "creator")
-            if author_items:
-                metadata_dict["authors"] = [
-                    author[0] for author in author_items if len(author) > 0
-                ]
-        except Exception as e:
-            logger.warning(f"Error extracting authors: {e}")
-
-        # Extract description
-        try:
-            desc_items = self.book.get_metadata("DC", "description")
-            if desc_items and len(desc_items) > 0:
-                metadata_dict["description"] = desc_items[0][0]
-        except Exception as e:
-            logger.warning(f"Error extracting description: {e}")
-
-        # Extract publisher
-        try:
-            publisher_items = self.book.get_metadata("DC", "publisher")
-            if publisher_items and len(publisher_items) > 0:
-                metadata_dict["publisher"] = publisher_items[0][0]
-        except Exception as e:
-            logger.warning(f"Error extracting publisher: {e}")
-
-        # Extract publication year
-        try:
-            date_items = self.book.get_metadata("DC", "date")
-            if date_items and len(date_items) > 0:
-                date_str = date_items[0][0]
-                year_match = re.search(r"\b(19|20)\d{2}\b", date_str)
-                if year_match:
-                    metadata_dict["publication_year"] = year_match.group(0)
-                else:
-                    metadata_dict["publication_year"] = date_str
-        except Exception as e:
-            logger.warning(f"Error extracting publication date: {e}")
-
-        # Extract identifier (ISBN, UUID, etc.) - Required for EPUB3
-        try:
-            identifier_items = self.book.get_metadata("DC", "identifier")
-            if identifier_items and len(identifier_items) > 0:
-                metadata_dict["identifier"] = identifier_items[0][0]
-        except Exception as e:
-            logger.warning(f"Error extracting identifier: {e}")
-
-        # Extract language - Required for EPUB3
-        try:
-            language_items = self.book.get_metadata("DC", "language")
-            if language_items and len(language_items) > 0:
-                metadata_dict["language"] = language_items[0][0]
-        except Exception as e:
-            logger.warning(f"Error extracting language: {e}")
-
-        # Extract contributors
-        try:
-            contributor_items = self.book.get_metadata("DC", "contributor")
-            if contributor_items:
-                metadata_dict["contributors"] = [
-                    contributor[0]
-                    for contributor in contributor_items
-                    if len(contributor) > 0
-                ]
-        except Exception as e:
-            logger.warning(f"Error extracting contributors: {e}")
-
-        # Extract rights (copyright info)
-        try:
-            rights_items = self.book.get_metadata("DC", "rights")
-            if rights_items and len(rights_items) > 0:
-                metadata_dict["rights"] = rights_items[0][0]
-        except Exception as e:
-            logger.warning(f"Error extracting rights: {e}")
-
-        # Extract coverage
-        try:
-            coverage_items = self.book.get_metadata("DC", "coverage")
-            if coverage_items and len(coverage_items) > 0:
-                metadata_dict["coverage"] = coverage_items[0][0]
-        except Exception as e:
-            logger.warning(f"Error extracting coverage: {e}")
-
-        self._metadata = Metadata(**metadata_dict)
+        self._metadata = Metadata(
+            title=self._get_single_metadata("title"),
+            authors=self._get_list_metadata("creator"),
+            description=self._get_single_metadata("description"),
+            publisher=self._get_single_metadata("publisher"),
+            publication_year=publication_year,
+            identifier=self._get_single_metadata("identifier"),
+            language=self._get_single_metadata("language"),
+            contributors=self._get_list_metadata("contributor"),
+            rights=self._get_single_metadata("rights"),
+            coverage=self._get_single_metadata("coverage"),
+        )
         return self._metadata
 
     def get_chapters(self) -> list[Chapter]:

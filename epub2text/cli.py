@@ -15,7 +15,7 @@ from rich.table import Table
 from rich.tree import Tree
 
 from .cleaner import TextCleaner
-from .formatters import format_as_sentences
+from .formatters import format_paragraphs, format_sentences, split_long_lines
 from .models import Chapter
 from .parser import EPUBParser
 
@@ -201,36 +201,63 @@ def list(filepath: Path, format: str):
 @click.option("--chapters", "-c", type=str, help="Chapter range (e.g., '1-5,7,9-12')")
 @click.option("--interactive", "-i", is_flag=True, help="Interactive chapter selection")
 @click.option(
-    "--format-style",
-    "-s",
-    type=click.Choice(["compact", "readable", "sentences"]),
-    default="compact",
-    help="Output format: compact (epub2txt style), readable (blank lines), "
-    "sentences (one per line)",
+    "--paragraphs",
+    "-p",
+    is_flag=True,
+    help="One line per paragraph (collapse internal line breaks)",
 )
-@click.option("--no-clean", is_flag=True, help="Disable smart text cleaning")
+@click.option(
+    "--sentences",
+    "-s",
+    is_flag=True,
+    help="One line per sentence (uses spaCy)",
+)
+@click.option(
+    "--max-length",
+    "-m",
+    type=int,
+    default=None,
+    help="Split lines exceeding N chars at clause boundaries (uses spaCy)",
+)
+@click.option(
+    "--empty-lines",
+    is_flag=True,
+    help="Use empty lines between paragraphs (instead of default separator)",
+)
+@click.option(
+    "--separator",
+    type=str,
+    default="  ",
+    help="Paragraph separator prepended to new paragraphs (default: two spaces)",
+)
+@click.option("--raw", is_flag=True, help="Disable all text cleaning")
 @click.option(
     "--keep-footnotes", is_flag=True, help="Keep bracketed footnotes like [1]"
 )
 @click.option("--keep-page-numbers", is_flag=True, help="Keep page numbers")
 @click.option(
+    "--no-markers",
+    is_flag=True,
+    help="Hide <<CHAPTER: ...>> markers from output",
+)
+@click.option(
     "--language-model",
     "-l",
     type=str,
     default="en_core_web_sm",
-    help="spaCy language model for sentence formatting (default: en_core_web_sm)",
+    help="spaCy language model (default: en_core_web_sm)",
 )
 @click.option(
     "--offset",
     type=int,
     default=0,
-    help="Skip the first N lines of output (0-based, default: 0)",
+    help="Skip the first N lines of output",
 )
 @click.option(
     "--limit",
     type=int,
     default=None,
-    help="Limit output to N lines (default: no limit)",
+    help="Limit output to N lines",
 )
 @click.option(
     "--line-numbers",
@@ -238,64 +265,53 @@ def list(filepath: Path, format: str):
     is_flag=True,
     help="Add line numbers to output",
 )
-@click.option(
-    "--no-chapter-titles",
-    is_flag=True,
-    help="Hide <<CHAPTER: ...>> markers from output",
-)
-@click.option(
-    "--no-empty-lines",
-    is_flag=True,
-    help="Remove empty lines from output",
-)
 def extract(
     filepath: Path,
     output: Optional[Path],
     chapters: Optional[str],
     interactive: bool,
-    format_style: str,
-    no_clean: bool,
+    paragraphs: bool,
+    sentences: bool,
+    max_length: Optional[int],
+    empty_lines: bool,
+    separator: str,
+    raw: bool,
     keep_footnotes: bool,
     keep_page_numbers: bool,
+    no_markers: bool,
     language_model: str,
     offset: int,
     limit: Optional[int],
     line_numbers: bool,
-    no_chapter_titles: bool,
-    no_empty_lines: bool,
 ):
     """
     Extract text from EPUB file.
 
-    By default, extracts all chapters with smart cleaning enabled.
-    Use --chapters to specify a range, or --interactive for selection UI.
-    Use --offset and --limit to control which lines are output.
+    By default, extracts all chapters with smart cleaning. Paragraphs are
+    separated by a separator (default: two spaces at start of new paragraph).
+
+    Examples:
+
+        epub2text extract book.epub
+
+        epub2text extract book.epub --paragraphs --sentences
+
+        epub2text extract book.epub --max-length 80
+
+        epub2text extract book.epub -o output.txt --chapters 1-5
     """
     try:
-        # Validate format-style and no-clean combination
-        if format_style == "sentences" and no_clean:
-            console.print(
-                "[red]Error: --format-style sentences cannot be used with "
-                "--no-clean[/red]"
-            )
-            sys.exit(1)
+        # Determine effective separator
+        effective_separator = "" if empty_lines else separator
 
-        # Determine paragraph separator based on format style
-        if format_style == "compact":
-            paragraph_sep = "\n"
-        elif format_style == "readable":
-            paragraph_sep = "\n\n"
-        else:  # sentences
-            paragraph_sep = "\n\n"  # Initial parsing, will be post-processed
-
-        # Load EPUB
+        # Load EPUB - always use double newlines for paragraph detection
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             console=console,
         ) as progress:
             progress.add_task(f"Loading {filepath.name}...", total=None)
-            parser = EPUBParser(str(filepath), paragraph_separator=paragraph_sep)
+            parser = EPUBParser(str(filepath), paragraph_separator="\n\n")
             all_chapters = parser.get_chapters()
             progress.stop()
 
@@ -328,12 +344,18 @@ def extract(
             text = parser.extract_chapters(chapter_ids)
             progress.stop()
 
+        # Remove chapter markers if requested (do this early)
+        if no_markers:
+            import re
+
+            text = re.sub(r"<<CHAPTER:[^>]*>>\n*", "", text)
+
         # Apply cleaning if enabled
-        if not no_clean:
+        if not raw:
             cleaner = TextCleaner(
                 remove_footnotes=not keep_footnotes,
                 remove_page_numbers=not keep_page_numbers,
-                preserve_single_newlines=(format_style == "compact"),
+                preserve_single_newlines=True,  # Keep structure for formatting
             )
             with Progress(
                 SpinnerColumn(),
@@ -344,8 +366,9 @@ def extract(
                 text = cleaner.clean(text)
                 progress.stop()
 
-        # Apply format-specific post-processing
-        if format_style == "sentences":
+        # Apply formatting based on options
+        if sentences:
+            # One sentence per line
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
@@ -353,26 +376,49 @@ def extract(
             ) as progress:
                 progress.add_task("Formatting sentences...", total=None)
                 try:
-                    text = format_as_sentences(text, language_model=language_model)
-                except ImportError as e:
-                    console.print(f"[red]Error: {e}[/red]")
-                    sys.exit(1)
-                except OSError as e:
+                    text = format_sentences(
+                        text,
+                        separator=effective_separator,
+                        language_model=language_model,
+                    )
+                except (ImportError, OSError) as e:
                     console.print(f"[red]Error: {e}[/red]")
                     sys.exit(1)
                 progress.stop()
+        elif paragraphs or not empty_lines:
+            # Format paragraphs with separator
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                progress.add_task("Formatting paragraphs...", total=None)
+                text = format_paragraphs(
+                    text,
+                    separator=effective_separator,
+                    one_line_per_paragraph=paragraphs,
+                )
+                progress.stop()
 
-        # Remove chapter markers if requested
-        if no_chapter_titles:
-            import re
-
-            text = re.sub(r"<<CHAPTER:[^>]*>>\n*", "", text)
-
-        # Remove empty lines if requested
-        if no_empty_lines:
-            lines = text.splitlines()
-            lines = [line for line in lines if line.strip()]
-            text = "\n".join(lines)
+        # Apply max-length splitting if requested
+        if max_length is not None:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                progress.add_task("Splitting long lines...", total=None)
+                try:
+                    text = split_long_lines(
+                        text,
+                        max_length=max_length,
+                        separator=effective_separator,
+                        language_model=language_model,
+                    )
+                except (ImportError, OSError) as e:
+                    console.print(f"[red]Error: {e}[/red]")
+                    sys.exit(1)
+                progress.stop()
 
         # Apply offset and limit to lines
         if offset > 0 or limit is not None or line_numbers:
@@ -392,8 +438,6 @@ def extract(
 
             # Add line numbers if requested
             if line_numbers:
-                # Calculate width needed for line numbers
-                # Start numbering from offset + 1 (1-based)
                 start_line = offset + 1
                 end_line = start_line + len(lines)
                 width = len(str(end_line))
