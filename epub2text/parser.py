@@ -146,7 +146,7 @@ class EPUBParser:
             parent_id: ID of parent chapter (for nested chapters)
             level: Depth level in the chapter hierarchy
         """
-        for _idx, entry in enumerate(nav_structure):
+        for entry in nav_structure:
             src: Optional[str] = entry.get("src")
             title: str = entry.get("title", "Untitled")
             children: list[dict[str, Any]] = entry.get("children", [])
@@ -253,7 +253,7 @@ class EPUBParser:
                             nav_type = "html"
                             logger.info(f"Found NAV HTML in: {item.get_name()}")
                             break
-                except Exception:
+                except (AttributeError, UnicodeDecodeError):
                     continue
 
         # If no navigation found, raise error
@@ -397,7 +397,8 @@ class EPUBParser:
                                 docs_between.append(spine_docs[doc_idx])
                             for doc_idx in range(0, idx_next):
                                 docs_between.append(spine_docs[doc_idx])
-                    except Exception:
+                    except ValueError:
+                        # Document not found in spine_docs
                         pass
                     for doc_href in docs_between:
                         slice_html += self.doc_content.get(doc_href, "")
@@ -411,7 +412,8 @@ class EPUBParser:
                     for doc_idx in range(idx_current + 1, len(spine_docs)):
                         intermediate_doc_href = spine_docs[doc_idx]
                         slice_html += self.doc_content.get(intermediate_doc_href, "")
-                except Exception:
+                except ValueError:
+                    # Document not found in spine_docs
                     pass
 
             # Fallback: if empty, use whole file
@@ -428,11 +430,12 @@ class EPUBParser:
 
                 # Handle ordered lists
                 for ol in slice_soup.find_all("ol"):
-                    start = int(ol.get("start", 1))
-                    for i, li in enumerate(ol.find_all("li", recursive=False)):
-                        number_text = f"{start + i}) "
+                    start_attr = ol.get("start")  # type: ignore[union-attr]
+                    start_num = int(start_attr) if start_attr else 1  # type: ignore[arg-type]
+                    for li_idx, li in enumerate(ol.find_all("li", recursive=False)):
+                        number_text = f"{start_num + li_idx}) "
                         if li.string:
-                            li.string.replace_with(number_text + li.string)
+                            li.string.replace_with(number_text + str(li.string))  # type: ignore[union-attr]
                         else:
                             li.insert(0, NavigableString(number_text))
 

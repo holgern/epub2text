@@ -13,6 +13,8 @@ from typing import Union
 from .parser import EPUBParser
 from .models import Chapter, Metadata
 from .cleaner import clean_text, TextCleaner
+from .bookmarks import Bookmark, BookmarkManager
+from .reader import EpubReader, ReaderState
 
 __all__ = [
     "EPUBParser",
@@ -21,6 +23,10 @@ __all__ = [
     "clean_text",
     "TextCleaner",
     "epub2txt",
+    "Bookmark",
+    "BookmarkManager",
+    "EpubReader",
+    "ReaderState",
 ]
 
 try:
@@ -56,13 +62,19 @@ def epub2txt(
     # Check if filepath is a URL
     is_url = filepath.startswith("http://") or filepath.startswith("https://")
 
-    tmp_path = None
+    tmp_path: str | None = None
     if is_url:
         # Download to temporary file
-        with tempfile.NamedTemporaryFile(suffix=".epub", delete=False) as tmp:
-            tmp_path = tmp.name
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".epub", delete=False) as tmp:
+                tmp_path = tmp.name
             urllib.request.urlretrieve(filepath, tmp_path)
             actual_path = tmp_path
+        except Exception:
+            # Clean up temporary file on download failure
+            if tmp_path and Path(tmp_path).exists():
+                Path(tmp_path).unlink(missing_ok=True)
+            raise
     else:
         actual_path = filepath
 

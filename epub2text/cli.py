@@ -2,6 +2,7 @@
 Command-line interface for epub2text.
 """
 
+import re
 import sys
 from pathlib import Path
 from typing import Optional
@@ -26,6 +27,9 @@ from .models import Chapter
 from .parser import EPUBParser
 
 console = Console()
+
+# Maximum length for description truncation in metadata display
+MAX_DESCRIPTION_LENGTH = 200
 
 
 def parse_chapter_range(range_str: str) -> list[int]:
@@ -362,8 +366,6 @@ def extract(
 
         # Remove chapter markers if requested (do this early)
         if no_markers:
-            import re
-
             text = re.sub(r"<<CHAPTER:[^>]*>>\n*", "", text)
 
         # Apply cleaning if enabled
@@ -578,8 +580,8 @@ def info(filepath: Path, format: str) -> None:
                 table.add_row("Coverage", metadata.coverage)
             if metadata.description:
                 desc = (
-                    metadata.description[:200] + "..."
-                    if len(metadata.description) > 200
+                    metadata.description[:MAX_DESCRIPTION_LENGTH] + "..."
+                    if len(metadata.description) > MAX_DESCRIPTION_LENGTH
                     else metadata.description
                 )
                 table.add_row("Description", desc)
@@ -632,8 +634,8 @@ def info(filepath: Path, format: str) -> None:
                 info_lines.append(f"[bold]Coverage:[/bold] {metadata.coverage}")
             if metadata.description:
                 desc = (
-                    metadata.description[:200] + "..."
-                    if len(metadata.description) > 200
+                    metadata.description[:MAX_DESCRIPTION_LENGTH] + "..."
+                    if len(metadata.description) > MAX_DESCRIPTION_LENGTH
                     else metadata.description
                 )
                 info_lines.append(f"[bold]Description:[/bold] {desc}")
@@ -645,6 +647,265 @@ def info(filepath: Path, format: str) -> None:
                 "\n".join(info_lines), title=f"📖 {filepath.name}", border_style="cyan"
             )
             console.print(panel)
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument("filepath", type=click.Path(exists=True, path_type=Path))
+@click.option("--chapter", "-c", type=int, help="Start at specific chapter (number)")
+@click.option("--line", "-l", type=int, help="Start at specific line number")
+@click.option("--resume", is_flag=True, help="Resume from last bookmark")
+@click.option(
+    "--bookmark-file",
+    type=click.Path(path_type=Path),
+    help="Custom bookmark file path",
+)
+@click.option("--page-size", type=int, help="Lines per page (default: auto-detect)")
+@click.option("--no-header", is_flag=True, help="Hide header")
+@click.option("--no-footer", is_flag=True, help="Hide footer")
+@click.option(
+    "--sentences",
+    "-s",
+    is_flag=True,
+    help="One sentence per line (uses spaCy)",
+)
+@click.option(
+    "--comma",
+    is_flag=True,
+    help="One clause per line (uses spaCy)",
+)
+@click.option(
+    "--paragraphs",
+    "-p",
+    is_flag=True,
+    help="One paragraph per line",
+)
+@click.option(
+    "--language-model",
+    "-m",
+    type=str,
+    default="en_core_web_sm",
+    help="spaCy language model (default: en_core_web_sm)",
+)
+@click.option("--raw", is_flag=True, help="Disable all text cleaning")
+@click.option(
+    "--keep-footnotes", is_flag=True, help="Keep bracketed footnotes like [1]"
+)
+@click.option("--keep-page-numbers", is_flag=True, help="Keep page numbers")
+@click.option(
+    "--width",
+    "-w",
+    type=int,
+    help="Maximum content width for better readability (default: full terminal)",
+)
+def read(
+    filepath: Path,
+    chapter: Optional[int],
+    line: Optional[int],
+    resume: bool,
+    bookmark_file: Optional[Path],
+    page_size: Optional[int],
+    no_header: bool,
+    no_footer: bool,
+    sentences: bool,
+    comma: bool,
+    paragraphs: bool,
+    language_model: str,
+    raw: bool,
+    keep_footnotes: bool,
+    keep_page_numbers: bool,
+    width: Optional[int],
+) -> None:
+    """
+    Interactively read an EPUB file in the terminal.
+
+    Uses vim-style navigation:
+
+    \b
+      j/Down      Scroll down one line
+      k/Up        Scroll up one line
+      Space/PgDn  Next page
+      b/PgUp      Previous page
+      n           Next chapter
+      p           Previous chapter
+      g/Home      Go to beginning
+      G/End       Go to end
+      m           Save bookmark
+      '           Jump to bookmark
+      h/?         Show help
+      q/Esc       Quit
+
+    Examples:
+
+        epub2text read book.epub
+
+        epub2text read book.epub --resume
+
+        epub2text read book.epub --chapter 5
+
+        epub2text read book.epub --sentences
+    """
+    from .bookmarks import BookmarkManager
+    from .reader import EpubReader
+
+    try:
+        # Load EPUB
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            progress.add_task(f"Loading {filepath.name}...", total=None)
+            parser = EPUBParser(str(filepath), paragraph_separator="\n\n")
+            all_chapters = parser.get_chapters()
+            metadata = parser.get_metadata()
+            progress.stop()
+
+        if not all_chapters:
+            console.print("[yellow]No chapters found in EPUB file.[/yellow]")
+            return
+
+        # Extract text with chapter markers
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            progress.add_task("Extracting chapters...", total=None)
+            text = parser.extract_chapters(None)  # All chapters
+            progress.stop()
+
+        # Apply cleaning if enabled
+        if not raw:
+            cleaner = TextCleaner(
+                remove_footnotes=not keep_footnotes,
+                remove_page_numbers=not keep_page_numbers,
+                preserve_single_newlines=True,
+            )
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                progress.add_task("Cleaning text...", total=None)
+                text = cleaner.clean(text)
+                progress.stop()
+
+        # Apply formatting based on options
+        if sentences and comma:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                progress.add_task("Formatting sentences and clauses...", total=None)
+                try:
+                    text = format_sentences(
+                        text, separator="  ", language_model=language_model
+                    )
+                    text = format_clauses(
+                        text, separator="  ", language_model=language_model
+                    )
+                except (ImportError, OSError) as e:
+                    console.print(f"[red]Error: {e}[/red]")
+                    sys.exit(1)
+                progress.stop()
+        elif comma:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                progress.add_task("Formatting clauses...", total=None)
+                try:
+                    text = format_clauses(
+                        text, separator="  ", language_model=language_model
+                    )
+                except (ImportError, OSError) as e:
+                    console.print(f"[red]Error: {e}[/red]")
+                    sys.exit(1)
+                progress.stop()
+        elif sentences:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                progress.add_task("Formatting sentences...", total=None)
+                try:
+                    text = format_sentences(
+                        text, separator="  ", language_model=language_model
+                    )
+                except (ImportError, OSError) as e:
+                    console.print(f"[red]Error: {e}[/red]")
+                    sys.exit(1)
+                progress.stop()
+        elif paragraphs:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                progress.add_task("Formatting paragraphs...", total=None)
+                text = format_paragraphs(
+                    text, separator="  ", one_line_per_paragraph=True
+                )
+                progress.stop()
+        else:
+            # Default: format paragraphs with separator
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                progress.add_task("Formatting paragraphs...", total=None)
+                text = format_paragraphs(
+                    text, separator="  ", one_line_per_paragraph=False
+                )
+                progress.stop()
+
+        # Setup bookmark manager
+        bookmark_manager = BookmarkManager(bookmark_file)
+
+        # Determine starting position
+        start_line = 0
+        start_chapter = None
+
+        if resume:
+            bookmark = bookmark_manager.load(str(filepath))
+            if bookmark:
+                start_line = bookmark.line_offset
+                console.print(
+                    f"[green]Resuming from {bookmark.percentage:.1f}%[/green]"
+                )
+            else:
+                console.print(
+                    "[yellow]No bookmark found, starting from beginning[/yellow]"
+                )
+        elif chapter is not None:
+            start_chapter = chapter - 1  # Convert to 0-based
+        elif line is not None:
+            start_line = line - 1  # Convert to 0-based
+
+        # Create and run reader
+        reader = EpubReader(
+            content=text,
+            chapters=all_chapters,
+            title=metadata.title or filepath.name,
+            epub_path=str(filepath),
+            page_size=page_size,
+            show_header=not no_header,
+            show_footer=not no_footer,
+            start_line=start_line,
+            start_chapter=start_chapter,
+            bookmark_manager=bookmark_manager,
+            width=width,
+        )
+
+        reader.run()
 
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
