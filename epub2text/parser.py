@@ -114,9 +114,13 @@ class EPUBParser:
         )
         return self._metadata
 
-    def get_chapters(self) -> list[Chapter]:
+    def get_chapters(self, include_text: bool = True) -> list[Chapter]:
         """
         Extract all chapters from the EPUB using navigation.
+
+        Args:
+            include_text: If True, include full chapter text. If False, return only
+                metadata (title, id, level, char_count). Default: True.
 
         Returns:
             List of Chapter objects
@@ -126,7 +130,9 @@ class EPUBParser:
 
         # Convert the navigation structure to Chapter objects
         chapters: list[Chapter] = []
-        self._build_chapters_from_nav(self.processed_nav_structure, chapters, level=1)
+        self._build_chapters_from_nav(
+            self.processed_nav_structure, chapters, level=1, include_text=include_text
+        )
 
         return chapters
 
@@ -136,6 +142,7 @@ class EPUBParser:
         chapters: list[Chapter],
         parent_id: Optional[str] = None,
         level: int = 1,
+        include_text: bool = True,
     ) -> None:
         """
         Recursively build Chapter objects from navigation structure.
@@ -145,6 +152,7 @@ class EPUBParser:
             chapters: List to append Chapter objects to
             parent_id: ID of parent chapter (for nested chapters)
             level: Depth level in the chapter hierarchy
+            include_text: If True, include full text; if False, only metadata
         """
         for entry in nav_structure:
             src: Optional[str] = entry.get("src")
@@ -154,8 +162,11 @@ class EPUBParser:
             # Generate a unique ID for this chapter
             chapter_id = src if src else f"chapter_{len(chapters)}"
 
-            # Get the text content if available
-            text = self.content_texts.get(src, "") if src else ""
+            # Get the text content if available and requested
+            if include_text:
+                text = self.content_texts.get(src, "") if src else ""
+            else:
+                text = ""
             char_count = self.content_lengths.get(src, 0) if src else 0
 
             # Create Chapter object
@@ -172,7 +183,11 @@ class EPUBParser:
             # Process children recursively
             if children:
                 self._build_chapters_from_nav(
-                    children, chapters, parent_id=chapter_id, level=level + 1
+                    children,
+                    chapters,
+                    parent_id=chapter_id,
+                    level=level + 1,
+                    include_text=include_text,
                 )
 
     def _process_epub_content_nav(self) -> None:  # noqa: C901
@@ -802,7 +817,8 @@ class EPUBParser:
             skip_toc: If True, skip TOC and front matter chapters (default: False)
 
         Returns:
-            Combined text from all selected chapters
+            Combined text from all selected chapters with chapter titles separated
+            by 4 linebreaks before the title and 2 linebreaks after.
         """
         chapters = self.get_chapters()
 
@@ -829,9 +845,9 @@ class EPUBParser:
                     filtered.append(chapter)
             selected = filtered
 
-        # Combine text with chapter markers
+        # Combine text with chapter titles
         parts = []
-        for chapter in selected:
+        for i, chapter in enumerate(selected):
             if chapter.text:
                 # Remove duplicate title if requested
                 if deduplicate_chapter_titles:
@@ -841,9 +857,15 @@ class EPUBParser:
                 else:
                     cleaned_text = chapter.text
 
-                parts.append(f"<<CHAPTER: {chapter.title}>>\n\n{cleaned_text}")
+                # Format: 4 linebreaks (if not first), chapter title, 2 linebreaks, content
+                if i == 0:
+                    # First chapter: no leading linebreaks
+                    parts.append(f"{chapter.title}\n\n{cleaned_text}")
+                else:
+                    # Subsequent chapters: 4 linebreaks before title
+                    parts.append(f"\n\n\n\n{chapter.title}\n\n{cleaned_text}")
 
-        return "\n\n".join(parts)
+        return "".join(parts)
 
     def get_pages(
         self,
@@ -1474,7 +1496,8 @@ class EPUBParser:
             skip_toc: If True, skip pages from TOC/Introduction chapter (default: False)
 
         Returns:
-            Combined text from all selected pages with chapter markers
+            Combined text from all selected pages with chapter titles separated
+            by 4 linebreaks before the title and 2 linebreaks after.
         """
         pages = self.get_pages()
 
@@ -1533,10 +1556,16 @@ class EPUBParser:
                 if not page_text.strip():
                     continue
 
-            # Add chapter marker when chapter changes
+            # Add chapter title when chapter changes
             if page.chapter_title and page.chapter_title != current_chapter:
                 current_chapter = page.chapter_title
-                parts.append(f"<<CHAPTER: {current_chapter}>>")
+                # Add chapter title with proper formatting
+                if parts:
+                    # Not the first chapter: 4 linebreaks before title
+                    parts.append(f"\n\n\n\n{current_chapter}\n\n")
+                else:
+                    # First chapter: no leading linebreaks
+                    parts.append(f"{current_chapter}\n\n")
 
             # Apply title deduplication if requested
             if deduplicate_chapter_titles and page.chapter_title:

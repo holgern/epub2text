@@ -70,39 +70,48 @@ class TestPageExtractionImprovements:
     def test_extract_pages_includes_chapter_markers(
         self, epub_with_chapters: Path
     ) -> None:
-        """Test that extract_pages includes chapter markers."""
+        """Test that extract_pages includes chapter titles."""
         parser = EPUBParser(str(epub_with_chapters))
 
         # Extract pages with small page size to get multiple pages per chapter
         pages = parser.get_pages(synthetic_page_size=100, use_words=False)
         text = parser.extract_pages()
 
-        # Should contain chapter markers
-        assert "<<CHAPTER:" in text
+        # Should contain chapter titles (new format: title preceded by newlines)
+        # Check for known chapter titles
+        assert (
+            "\n\n\n\nONE\n\n" in text or "ONE\n\n" in text
+        )  # ONE might be first chapter
         # Should contain page markers
         assert "<<PAGE:" in text
 
     def test_extract_pages_chapter_marker_appears_once_per_chapter(
         self, epub_with_chapters: Path
     ) -> None:
-        """Test that chapter marker appears only once when chapter changes."""
+        """Test that chapter title appears only once when chapter changes."""
         parser = EPUBParser(str(epub_with_chapters))
 
         # Extract with small page size
         pages = parser.get_pages(synthetic_page_size=100, use_words=False)
         text = parser.extract_pages()
 
-        # Count how many times each chapter marker appears
-        # Each chapter marker should appear exactly once
-        lines = text.split("\n")
-        chapter_markers = [line for line in lines if line.startswith("<<CHAPTER:")]
+        # Detect chapter titles: lines preceded by 4+ newlines (or at start) and followed by 2+ newlines
+        # For simplicity, look for the pattern \n\n\n\n{TITLE}\n\n
+        import re
 
-        # Should have chapter markers (at least one)
-        assert len(chapter_markers) > 0
+        # Pattern: 4+ newlines, any text (not a newline), then 2+ newlines
+        chapter_pattern = re.compile(r"(\n{4,}|\A)([^\n]+)\n{2,}")
+        chapter_matches = chapter_pattern.findall(text)
 
-        # Check that markers don't repeat consecutively
-        for i in range(len(chapter_markers) - 1):
-            assert chapter_markers[i] != chapter_markers[i + 1]
+        # Should have chapter titles (at least one)
+        assert len(chapter_matches) > 0
+
+        # Extract just the titles
+        chapter_titles = [match[1] for match in chapter_matches]
+
+        # Check that same title doesn't appear consecutively
+        for i in range(len(chapter_titles) - 1):
+            assert chapter_titles[i] != chapter_titles[i + 1]
 
     def test_extract_pages_deduplicates_titles_by_default(
         self, epub_with_chapters: Path
@@ -112,8 +121,8 @@ class TestPageExtractionImprovements:
 
         text = parser.extract_pages(deduplicate_chapter_titles=True)
 
-        # The text should contain chapter markers
-        assert "<<CHAPTER:" in text
+        # The text should contain chapter titles (new format)
+        assert "\n\n\n\nONE\n\n" in text or "ONE\n\n" in text
 
         # The deduplication should have removed standalone chapter titles
         # Look for patterns like "ONE\nONE" (duplicate) vs just content
@@ -142,9 +151,9 @@ class TestPageExtractionImprovements:
         text_without = parser.extract_pages(deduplicate_chapter_titles=False)
         text_with = parser.extract_pages(deduplicate_chapter_titles=True)
 
-        # Both should contain the markers
-        assert "<<CHAPTER:" in text_without
-        assert "<<CHAPTER:" in text_with
+        # Both should contain chapter titles (new format)
+        assert "\n\n\n\nONE\n\n" in text_without or "ONE\n\n" in text_without
+        assert "\n\n\n\nONE\n\n" in text_with or "ONE\n\n" in text_with
 
         # Deduplicated version should be same length or shorter
         assert len(text_with) <= len(text_without)
@@ -163,13 +172,16 @@ class TestPageExtractionImprovements:
         assert len(text_without_toc) <= len(text_with_toc)
 
         # Check that "Introduction" or "Table of Contents" is not in no-TOC version
-        lines_without = text_without_toc.split("\n")
-        chapter_lines_without = [l for l in lines_without if "<<CHAPTER:" in l]
+        # Look for these as chapter titles (preceded by 4 newlines or at start)
+        import re
 
-        for line in chapter_lines_without:
-            assert "introduction" not in line.lower()
-            assert "table of contents" not in line.lower()
-            assert "contents>>" not in line.lower() or "introduction" in line.lower()
+        chapter_pattern = re.compile(r"(\n{4,}|\A)([^\n]+)\n{2,}")
+        chapter_matches = chapter_pattern.findall(text_without_toc)
+        chapter_titles = [match[1] for match in chapter_matches]
+
+        for title in chapter_titles:
+            assert "introduction" not in title.lower()
+            assert "table of contents" not in title.lower()
 
     def test_extract_pages_preserves_chapter_info(
         self, epub_with_chapters: Path
@@ -185,7 +197,7 @@ class TestPageExtractionImprovements:
         # Should have some pages with chapter info
         assert len(pages_with_chapters) > 0
 
-        # Extract and verify chapter markers are present
+        # Extract and verify chapter titles are present
         text = parser.extract_pages()
 
         # Get unique chapter titles from pages (excluding TOC/Introduction)
@@ -197,19 +209,20 @@ class TestPageExtractionImprovements:
             ]:
                 unique_chapters.add(page.chapter_title)
 
-        # At least one chapter marker should appear in text
-        chapter_markers_found = 0
+        # At least one chapter title should appear in text
+        chapter_titles_found = 0
         for chapter_title in unique_chapters:
-            if f"<<CHAPTER: {chapter_title}>>" in text:
-                chapter_markers_found += 1
+            # Check for new format: \n\n\n\n{TITLE}\n\n or {TITLE}\n\n (first chapter)
+            if f"\n\n\n\n{chapter_title}\n\n" in text or f"{chapter_title}\n\n" in text:
+                chapter_titles_found += 1
 
-        # Should have at least one chapter marker
-        assert chapter_markers_found > 0
+        # Should have at least one chapter title
+        assert chapter_titles_found > 0
 
     def test_extract_specific_pages_with_chapter_markers(
         self, epub_with_chapters: Path
     ) -> None:
-        """Test extracting specific pages maintains chapter markers."""
+        """Test extracting specific pages maintains chapter titles."""
         parser = EPUBParser(str(epub_with_chapters))
 
         all_pages = parser.get_pages(synthetic_page_size=150, use_words=False)
@@ -218,28 +231,39 @@ class TestPageExtractionImprovements:
         page_numbers = [all_pages[i].page_number for i in range(min(3, len(all_pages)))]
         text = parser.extract_pages(page_numbers=page_numbers)
 
-        # Should still have chapter markers
-        assert "<<CHAPTER:" in text
+        # Should still have chapter titles (new format)
+        # Extract chapter titles using regex
+        import re
+
+        chapter_pattern = re.compile(r"(\n{4,}|\A)([^\n]+)\n{2,}")
+        chapter_matches = chapter_pattern.findall(text)
+        assert len(chapter_matches) > 0
+
         # Should have page markers
         assert "<<PAGE:" in text
 
     def test_chapter_marker_format(self, epub_with_chapters: Path) -> None:
-        """Test that chapter markers have correct format."""
+        """Test that chapter titles have correct format."""
         parser = EPUBParser(str(epub_with_chapters))
 
         text = parser.extract_pages()
 
-        # Find all chapter markers
-        lines = text.split("\n")
-        chapter_markers = [line for line in lines if line.startswith("<<CHAPTER:")]
+        # Find all chapter titles using the new format
+        # Chapter titles are preceded by 4+ newlines (or at start) and followed by 2+ newlines
+        import re
 
-        # Should have proper format: <<CHAPTER: Title>>
-        for marker in chapter_markers:
-            assert marker.startswith("<<CHAPTER:")
-            assert marker.endswith(">>")
-            # Should have content between markers
-            content = marker[10:-2].strip()
-            assert len(content) > 0
+        chapter_pattern = re.compile(r"(\n{4,}|\A)([^\n]+)\n{2,}")
+        chapter_matches = chapter_pattern.findall(text)
+
+        # Should have chapter titles
+        assert len(chapter_matches) > 0
+
+        # Extract just the titles
+        chapter_titles = [match[1] for match in chapter_matches]
+
+        # All titles should have content
+        for title in chapter_titles:
+            assert len(title.strip()) > 0
 
     def test_page_deduplication_with_same_line_title(self) -> None:
         """Test deduplication when title is on same line as content."""
@@ -271,10 +295,8 @@ class TestPageExtractionImprovements:
                         next_non_empty = lines[j]
                         break
                 if next_non_empty:
-                    # Allow chapter markers between pages
-                    assert not next_non_empty.startswith(
-                        "<<PAGE:"
-                    ) or next_non_empty.startswith("<<CHAPTER:")
+                    # Allow chapter titles or other content between pages, but not another PAGE marker
+                    assert not next_non_empty.startswith("<<PAGE:")
 
     def test_extract_pages_matches_extract_chapters_style(
         self, epub_with_chapters: Path
@@ -286,9 +308,17 @@ class TestPageExtractionImprovements:
         chapters_text = parser.extract_chapters()
         pages_text = parser.extract_pages()
 
-        # Both should use <<CHAPTER: ...>> markers
-        assert "<<CHAPTER:" in chapters_text
-        assert "<<CHAPTER:" in pages_text
+        # Both should use chapter titles with the new format
+        # Check for pattern: 4 newlines + title + 2 newlines (or title + 2 newlines for first chapter)
+        import re
+
+        chapter_pattern = re.compile(r"(\n{4,}|\A)([^\n]+)\n{2,}")
+
+        chapters_matches = chapter_pattern.findall(chapters_text)
+        pages_matches = chapter_pattern.findall(pages_text)
+
+        assert len(chapters_matches) > 0
+        assert len(pages_matches) > 0
 
         # Both should deduplicate by default
         # This is implicit - just verify both work

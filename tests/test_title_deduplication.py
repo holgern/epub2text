@@ -193,19 +193,22 @@ class TestTitleDeduplication:
         # Extract with deduplication (default)
         text = parser.extract_chapters(deduplicate_chapter_titles=True)
 
-        # Chapter 1: "ONE" should not appear twice
-        assert "<<CHAPTER: ONE>>" in text
-        # The title should not appear again after the marker
+        # Chapter should have title in new format (preceded by 4 newlines or at start, followed by 2 newlines)
+        assert "\n\n\n\nONE\n\n" in text or "ONE\n\n" in text
+
+        # The title should not appear again after being shown as chapter title
         lines = text.split("\n")
-        chapter_marker_idx = None
+        chapter_title_idx = None
         for i, line in enumerate(lines):
-            if "<<CHAPTER: ONE>>" in line:
-                chapter_marker_idx = i
+            if line.strip() == "ONE":
+                chapter_title_idx = i
                 break
 
-        assert chapter_marker_idx is not None
-        # Next non-empty line should not be "ONE"
-        next_lines = [l.strip() for l in lines[chapter_marker_idx + 1 :] if l.strip()]
+        assert chapter_title_idx is not None
+        # Next non-empty line should not be "ONE" (deduplication worked)
+        next_lines = [
+            l.strip() for l in lines[chapter_title_idx + 3 :] if l.strip()
+        ]  # Skip 2 newlines after title
         if next_lines:
             assert next_lines[0] != "ONE"
             # Should start with actual content
@@ -220,8 +223,8 @@ class TestTitleDeduplication:
         # Extract without deduplication
         text = parser.extract_chapters(deduplicate_chapter_titles=False)
 
-        # The marker should still be there
-        assert "<<CHAPTER: ONE>>" in text
+        # The chapter title should still be there in new format
+        assert "\n\n\n\nONE\n\n" in text or "ONE\n\n" in text
         # Original text should be preserved (may contain title)
         # This test just ensures the parameter works, actual content depends on EPUB structure
 

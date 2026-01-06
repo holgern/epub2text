@@ -12,6 +12,7 @@ and this project adheres to `Semantic Versioning <https://semver.org/spec/v2.0.0
 Added
 ~~~~~
 
+- ``get_chapters()`` method now supports ``include_text`` parameter for metadata-only extraction
 - Full Dublin Core metadata support: ``identifier``, ``language``, ``contributors``, ``rights``, ``coverage``
 - New ``extract`` command formatting options:
 
@@ -30,6 +31,13 @@ Added
 
 Changed
 ~~~~~~~
+
+- **BREAKING**: Chapter format changed from ``<<CHAPTER: Title>>`` to clean separation with newlines
+  
+  - First chapter: ``{title}\n\n{content}``
+  - Subsequent chapters: ``\n\n\n\n{title}\n\n{content}``
+  - Four linebreaks before chapter title, two linebreaks after
+  - More readable and natural text output
 
 - Refactored ``extract`` command with cleaner, more intuitive options
 - Improved ``get_metadata()`` function with reduced complexity

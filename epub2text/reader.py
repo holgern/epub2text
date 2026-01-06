@@ -84,7 +84,7 @@ class EpubReader:
         Initialize the EPUB reader.
 
         Args:
-            content: Full text content with <<CHAPTER:...>> markers
+            content: Full text content with chapter titles separated by 4 linebreaks
             chapters: List of Chapter objects
             title: Book title
             epub_path: Path to the EPUB file (for bookmarks)
@@ -108,7 +108,7 @@ class EpubReader:
         self._user_page_size = page_size
         self._page_size = page_size or self._calculate_page_size()
 
-        # Process content: remove chapter markers and build index
+        # Process content: detect chapter boundaries and build index
         self._process_content(content)
 
         # Set initial position
@@ -148,24 +148,67 @@ class EpubReader:
         return max(5, height - header_size - footer_size - 4)
 
     def _process_content(self, content: str) -> None:
-        """Process content, extract chapter markers, and build line index."""
-        # Split into lines and process
+        """
+        Process content, detect chapter boundaries, and build line index.
+
+        Chapter format: A line that appears after 4+ consecutive newlines and is
+        followed by 2 newlines is considered a chapter title.
+        """
+        # Split into lines
         raw_lines = content.split("\n")
 
         self.lines: list[str] = []
         self.chapter_offsets: list[int] = []  # Line index where each chapter starts
         self.chapter_titles: list[str] = []  # Title for each chapter
 
-        chapter_pattern = re.compile(r"^<<CHAPTER:(.+)>>$")
+        # Track consecutive empty lines to detect chapter boundaries
+        i = 0
+        while i < len(raw_lines):
+            line = raw_lines[i]
 
-        for line in raw_lines:
-            match = chapter_pattern.match(line.strip())
-            if match:
-                # Record chapter start position
-                self.chapter_offsets.append(len(self.lines))
-                self.chapter_titles.append(match.group(1).strip())
-            elif line.strip():  # Skip empty lines (paragraphs marked by separator)
+            # Check if this could be a chapter title:
+            # - Has content
+            # - Preceded by 4+ empty lines (or at start)
+            # - Followed by 2+ empty lines
+            if line.strip():
+                # Count empty lines before this line
+                empty_before = 0
+                j = i - 1
+                while j >= 0 and not raw_lines[j].strip():
+                    empty_before += 1
+                    j -= 1
+
+                # Count empty lines after this line
+                empty_after = 0
+                j = i + 1
+                while j < len(raw_lines) and not raw_lines[j].strip():
+                    empty_after += 1
+                    j += 1
+
+                # Check if this is a chapter title
+                # At start: no requirement for empty_before
+                # Otherwise: need 4+ empty lines before
+                is_chapter_title = False
+                if i == 0 or (empty_before >= 4 and empty_after >= 2):
+                    # Also check if next non-empty line exists (content follows)
+                    next_content_idx = i + 1 + empty_after
+                    if next_content_idx < len(raw_lines):
+                        is_chapter_title = True
+
+                if is_chapter_title:
+                    # Record chapter start position
+                    self.chapter_offsets.append(len(self.lines))
+                    self.chapter_titles.append(line.strip())
+                    # Don't add the title line to content (it's displayed in header)
+                    # Skip the title and following empty lines
+                    i += 1 + empty_after
+                    continue
+
+            # Regular line - add to content
+            if line.strip():
                 self.lines.append(line)
+
+            i += 1
 
         # If no chapters found, create a default one
         if not self.chapter_offsets:

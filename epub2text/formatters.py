@@ -101,7 +101,8 @@ def format_paragraphs(
         one_line_per_paragraph: If True, collapse each paragraph to single line
 
     Returns:
-        Formatted text with separator at start of each new paragraph
+        Formatted text with separator at start of each new paragraph.
+        Chapter titles (lines preceded by 4+ newlines) are preserved.
     """
     paragraphs = split_paragraphs(text)
 
@@ -118,7 +119,16 @@ def format_paragraphs(
             result_parts.append(para)
         else:
             # Subsequent paragraphs: add separator at start
-            if separator and not para.startswith("<<CHAPTER:"):
+            # Don't add separator to chapter titles (they are standalone)
+            # Chapter titles are identified by checking if they're very short
+            # and don't end with sentence-ending punctuation
+            is_likely_chapter_title = (
+                len(para) < 100
+                and not para.rstrip().endswith((".", "!", "?", '"', "'"))
+                and "\n" not in para
+            )
+
+            if separator and not is_likely_chapter_title:
                 # Add separator to each line of the paragraph
                 lines = para.split("\n")
                 lines[0] = separator + lines[0]
@@ -144,7 +154,8 @@ def format_sentences(
         language_model: spaCy language model to use
 
     Returns:
-        Text with one sentence per line, separator at paragraph boundaries
+        Text with one sentence per line, separator at paragraph boundaries.
+        Chapter titles are preserved.
     """
     _check_phrasplit()
     assert phrasplit_sentences is not None
@@ -156,8 +167,14 @@ def format_sentences(
 
     result_lines: list[str] = []
     for i, para in enumerate(paragraphs):
-        # Check if this is a chapter marker
-        if para.startswith("<<CHAPTER:"):
+        # Check if this is likely a chapter title (short, no sentence-ending punctuation)
+        is_likely_chapter_title = (
+            len(para) < 100
+            and not para.rstrip().endswith((".", "!", "?", '"', "'"))
+            and "\n" not in para
+        )
+
+        if is_likely_chapter_title:
             result_lines.append(para)
             continue
 
@@ -197,7 +214,8 @@ def format_clauses(
         language_model: spaCy language model to use
 
     Returns:
-        Text with one clause per line, separator at paragraph boundaries
+        Text with one clause per line, separator at paragraph boundaries.
+        Chapter titles are preserved.
 
     Example:
         Input: "I do like coffee, and I like wine."
@@ -215,8 +233,14 @@ def format_clauses(
 
     result_lines: list[str] = []
     for i, para in enumerate(paragraphs):
-        # Check if this is a chapter marker
-        if para.startswith("<<CHAPTER:"):
+        # Check if this is likely a chapter title
+        is_likely_chapter_title = (
+            len(para) < 100
+            and not para.rstrip().endswith((".", "!", "?", '"', "'"))
+            and "\n" not in para
+        )
+
+        if is_likely_chapter_title:
             result_lines.append(para)
             continue
 
@@ -261,7 +285,7 @@ def split_long_lines(
         language_model: spaCy language model to use
 
     Returns:
-        Text with long lines split
+        Text with long lines split. Chapter titles are preserved.
     """
     _check_phrasplit()
     assert phrasplit_long_lines is not None
@@ -270,8 +294,14 @@ def split_long_lines(
     result_lines: list[str] = []
 
     for line in lines:
-        # Preserve chapter markers as-is
-        if line.startswith("<<CHAPTER:") or line.startswith(separator + "<<CHAPTER:"):
+        # Preserve chapter titles (short lines without typical sentence endings)
+        is_likely_chapter_title = (
+            len(line.strip()) < 100
+            and line.strip()
+            and not line.strip().endswith((".", "!", "?", '"', "'"))
+        )
+
+        if is_likely_chapter_title:
             result_lines.append(line)
             continue
 

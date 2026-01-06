@@ -480,7 +480,7 @@ def example_cleaner_length() -> None:
     print("EXAMPLE: Text Length Calculation")
     print("=" * 60)
 
-    text_with_markers = """<<CHAPTER: Introduction>>
+    text_with_markers = """Introduction
 
     This is the actual content of the chapter.
 

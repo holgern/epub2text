@@ -512,7 +512,7 @@ def list_pages(filepath: Path, page_size: int, use_words: bool) -> None:
 @click.option(
     "--no-markers",
     is_flag=True,
-    help="Hide <<PAGE: ...>> and <<CHAPTER: ...>> markers from output",
+    help="Hide <<PAGE: ...>> markers and chapter titles from output",
 )
 @click.option(
     "--show-front-matter",
@@ -541,8 +541,9 @@ def extract_pages_cmd(
     If the EPUB contains a page-list navigation (original print page references),
     those pages will be used. Otherwise, synthetic pages are generated.
 
-    Pages are organized by chapters with <<CHAPTER: ...>> markers showing chapter
-    transitions. Duplicate chapter titles in content are automatically removed.
+    Pages are organized by chapters with chapter titles appearing before pages.
+    Chapter titles are separated from content by 4 linebreaks before and 2 after.
+    Duplicate chapter titles in content are automatically removed.
 
     By default, front matter (TOC, acknowledgements, etc.) is hidden. Use
     --show-front-matter to include it.
@@ -620,7 +621,8 @@ def extract_pages_cmd(
         # Remove markers if requested
         if no_markers:
             text = re.sub(r"<<PAGE:[^>]*>>\n*", "", text)
-            text = re.sub(r"<<CHAPTER:[^>]*>>\n*", "", text)
+            # Remove chapter titles: lines preceded by 4+ newlines and followed by 2+ newlines
+            text = re.sub(r"\n{4,}[^\n]+\n{2,}", "\n\n", text)
 
         # Apply cleaning if enabled
         if not raw:
@@ -706,7 +708,7 @@ def extract_pages_cmd(
 @click.option(
     "--no-markers",
     is_flag=True,
-    help="Hide <<CHAPTER: ...>> markers from output",
+    help="Hide chapter titles from output",
 )
 @click.option(
     "--language-model",
@@ -819,7 +821,11 @@ def extract(
 
         # Remove chapter markers if requested (do this early)
         if no_markers:
-            text = re.sub(r"<<CHAPTER:[^>]*>>\n*", "", text)
+            # Remove chapter titles: lines preceded by 4+ newlines and followed by 2+ newlines
+            # Also handle first chapter (no leading newlines)
+            text = re.sub(
+                r"(^|\n{4,})[^\n]+\n{2,}", "\n\n", text, count=0, flags=re.MULTILINE
+            )
 
         # Apply cleaning if enabled
         if not raw:
@@ -1135,35 +1141,86 @@ def extract_gutenberg(
         ) as progress:
             progress.add_task("Formatting chapters...", total=None)
 
-            # Split by chapter markers
-            chapter_pattern = re.compile(r"<<CHAPTER:([^>]*)>>")
-            parts = chapter_pattern.split(chapter_text)
+            # Split by new chapter format (4+ newlines, title, 2+ newlines)
+            # First, normalize the chapter text to help with splitting
+            chapter_lines = chapter_text.split("\n")
 
-            # Process each chapter (skip front matter)
-            for i in range(1, len(parts), 2):
-                if i < len(parts):
-                    chapter_title = parts[i].strip()
-                    chapter_content = parts[i + 1].strip() if i + 1 < len(parts) else ""
+            current_title = None
+            current_content = []
+            chapters_list = []
 
-                    # Skip front matter chapters
-                    if chapter_title.upper() in front_matter_titles:
+            i = 0
+            while i < len(chapter_lines):
+                line = chapter_lines[i]
+
+                # Detect chapter title: preceded by 4+ empty lines (or at start)
+                # and followed by 2+ empty lines
+                if line.strip():
+                    # Count empty lines before
+                    empty_before = 0
+                    j = i - 1
+                    while j >= 0 and not chapter_lines[j].strip():
+                        empty_before += 1
+                        j -= 1
+
+                    # Count empty lines after
+                    empty_after = 0
+                    j = i + 1
+                    while j < len(chapter_lines) and not chapter_lines[j].strip():
+                        empty_after += 1
+                        j += 1
+
+                    # Check if this is a chapter title
+                    is_chapter_title = (
+                        i == 0 or empty_before >= 4
+                    ) and empty_after >= 2
+
+                    if is_chapter_title:
+                        # Save previous chapter if any
+                        if current_title is not None:
+                            chapters_list.append(
+                                (current_title, "\n".join(current_content).strip())
+                            )
+
+                        # Start new chapter
+                        current_title = line.strip()
+                        current_content = []
+                        i += 1 + empty_after  # Skip title and following empty lines
                         continue
 
-                    if chapter_content:
-                        # Add 3 blank lines before chapter (4 newlines total)
-                        book_parts.append("")
-                        book_parts.append("")
-                        book_parts.append("")
+                # Regular content line
+                if (
+                    line.strip() or current_content
+                ):  # Include line if it has content or we've started collecting
+                    current_content.append(line)
 
-                        # Add chapter title in uppercase
-                        book_parts.append(chapter_title.upper())
-                        book_parts.append("")
+                i += 1
 
-                        # Wrap text at 72 characters (Project Gutenberg style)
-                        formatted_content = wrap_text_gutenberg(
-                            chapter_content, width=72
-                        )
-                        book_parts.append(formatted_content)
+            # Don't forget the last chapter
+            if current_title is not None:
+                chapters_list.append(
+                    (current_title, "\n".join(current_content).strip())
+                )
+
+            # Process each chapter (skip front matter)
+            for chapter_title, chapter_content in chapters_list:
+                # Skip front matter chapters
+                if chapter_title.upper() in front_matter_titles:
+                    continue
+
+                if chapter_content:
+                    # Add 3 blank lines before chapter (4 newlines total)
+                    book_parts.append("")
+                    book_parts.append("")
+                    book_parts.append("")
+
+                    # Add chapter title in uppercase
+                    book_parts.append(chapter_title.upper())
+                    book_parts.append("")
+
+                    # Wrap text at 72 characters (Project Gutenberg style)
+                    formatted_content = wrap_text_gutenberg(chapter_content, width=72)
+                    book_parts.append(formatted_content)
 
             progress.stop()
 
