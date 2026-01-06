@@ -23,7 +23,7 @@ from .formatters import (
     format_sentences,
     split_long_lines,
 )
-from .models import Chapter
+from .models import Chapter, Metadata, Page, PageSource
 from .parser import EPUBParser
 
 console = Console()
@@ -103,6 +103,90 @@ def display_chapters_table(chapters: list[Chapter]) -> None:
     console.print(table)
 
 
+def display_pages_table(pages: list[Page]) -> None:
+    """Display pages in a table format."""
+    table = Table(title="📄 Pages", show_header=True, header_style="bold magenta")
+    table.add_column("#", style="dim", width=6)
+    table.add_column("Page", style="cyan", width=10)
+    table.add_column("Characters", justify="right", style="green")
+    table.add_column("Source", justify="center", style="yellow")
+    table.add_column("Chapter", style="blue")
+
+    for idx, page in enumerate(pages, 1):
+        source_str = (
+            "print" if page.source == PageSource.EPUB_PAGE_LIST else "synthetic"
+        )
+        chapter_str = page.chapter_title or "-"
+        if len(chapter_str) > 40:
+            chapter_str = chapter_str[:37] + "..."
+        table.add_row(
+            str(idx),
+            page.page_number,
+            f"{page.char_count:,}",
+            source_str,
+            chapter_str,
+        )
+
+    console.print(table)
+
+
+def parse_page_range(range_str: str, pages: list[Page]) -> list[str]:
+    """
+    Parse page range string like "1-5,7,9-12" into list of page numbers.
+
+    Supports both numeric indices (1-based) and actual page numbers.
+
+    Args:
+        range_str: Range string (e.g., "1-5,7,9-12")
+        pages: List of pages for reference
+
+    Returns:
+        List of page numbers (as strings)
+    """
+    # Build a set of valid page numbers
+    valid_page_numbers = {p.page_number for p in pages}
+
+    result: set[str] = set()
+    parts = range_str.split(",")
+
+    for part in parts:
+        part = part.strip()
+        if "-" in part:
+            start, end = part.split("-", 1)
+            start = start.strip()
+            end = end.strip()
+
+            # Check if these are numeric indices or page numbers
+            try:
+                start_idx = int(start)
+                end_idx = int(end)
+
+                # Treat as 1-based indices
+                for idx in range(start_idx - 1, end_idx):
+                    if 0 <= idx < len(pages):
+                        result.add(pages[idx].page_number)
+            except ValueError:
+                # Treat as page number range (e.g., "i-v" for roman numerals)
+                # Just add start and end as literal page numbers
+                if start in valid_page_numbers:
+                    result.add(start)
+                if end in valid_page_numbers:
+                    result.add(end)
+        else:
+            # Single value - could be index or page number
+            try:
+                idx = int(part)
+                # Treat as 1-based index
+                if 0 < idx <= len(pages):
+                    result.add(pages[idx - 1].page_number)
+            except ValueError:
+                # Treat as literal page number
+                if part in valid_page_numbers:
+                    result.add(part)
+
+    return list(result)
+
+
 def interactive_chapter_selection(chapters: list[Chapter]) -> list[str]:
     """
     Interactively select chapters using rich prompts.
@@ -160,6 +244,130 @@ def cli() -> None:
     pass
 
 
+def wrap_text_gutenberg(text: str, width: int = 72) -> str:
+    """
+    Wrap text at specified width, preserving paragraph structure.
+
+    Args:
+        text: Text to wrap
+        width: Maximum line width (default: 72)
+
+    Returns:
+        Wrapped text
+    """
+    import textwrap
+
+    # Split into paragraphs
+    paragraphs = text.split("\n\n")
+    wrapped_paragraphs = []
+
+    for para in paragraphs:
+        if para.strip():
+            # Wrap this paragraph
+            wrapped = textwrap.fill(
+                para, width=width, break_long_words=False, break_on_hyphens=False
+            )
+            wrapped_paragraphs.append(wrapped)
+        else:
+            wrapped_paragraphs.append(para)
+
+    return "\n\n".join(wrapped_paragraphs)
+
+
+def generate_gutenberg_header(metadata: "Metadata", title: str) -> str:
+    """
+    Generate Project Gutenberg-style header from EPUB metadata.
+
+    Args:
+        metadata: EPUB metadata object
+        title: Book title
+
+    Returns:
+        Formatted header string
+    """
+    from datetime import datetime
+
+    lines = []
+
+    # Main title line
+    lines.append(f"The Project Gutenberg eBook of {title}")
+    lines.append("")
+
+    # Standard disclaimer
+    lines.append(
+        "This ebook is for the use of anyone anywhere in the United States and"
+    )
+    lines.append(
+        "most other parts of the world at no cost and with almost no restrictions"
+    )
+    lines.append(
+        "whatsoever. You may copy it, give it away or re-use it under the terms"
+    )
+    lines.append("of the Project Gutenberg License included with this ebook or online")
+    lines.append("at www.gutenberg.org. If you are not located in the United States,")
+    lines.append("you will have to check the laws of the country where you are located")
+    lines.append("before using this eBook.")
+    lines.append("")
+
+    # Metadata
+    lines.append(f"Title: {title}")
+    lines.append("")
+
+    if metadata.authors:
+        author_str = ", ".join(metadata.authors)
+        lines.append(f"Author: {author_str}")
+        lines.append("")
+
+    # Generation date
+    current_date = datetime.now().strftime("%B %d, %Y")
+    lines.append(f"Release date: {current_date} [Generated by epub2text]")
+    lines.append("")
+
+    if metadata.language:
+        lang_name = metadata.language
+        # Convert common language codes to full names
+        lang_map = {
+            "en": "English",
+            "fr": "French",
+            "de": "German",
+            "es": "Spanish",
+            "it": "Italian",
+        }
+        lang_name = lang_map.get(metadata.language.lower(), metadata.language)
+        lines.append(f"Language: {lang_name}")
+        lines.append("")
+
+    lines.append("")
+    lines.append(f"*** START OF THE PROJECT GUTENBERG EBOOK {title.upper()} ***")
+    lines.append("")
+
+    return "\n".join(lines)
+
+
+def generate_table_of_contents(chapters: list["Chapter"]) -> str:
+    """
+    Generate Table of Contents from chapter list.
+
+    Args:
+        chapters: List of Chapter objects
+
+    Returns:
+        Formatted TOC string
+    """
+    lines = []
+    lines.append("Contents")
+    lines.append("")
+    lines.append("")
+
+    for chapter in chapters:
+        # Use chapter title in uppercase, with indentation for nested chapters
+        indent = " " * (chapter.level - 1)
+        lines.append(f"{indent}{chapter.title.upper()}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 @cli.command(name="list")
 @click.argument("filepath", type=click.Path(exists=True, path_type=Path))
 @click.option(
@@ -194,6 +402,251 @@ def list_chapters(filepath: Path, format: str) -> None:
             display_chapters_tree(chapters)
         else:
             display_chapters_table(chapters)
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        sys.exit(1)
+
+
+@cli.command(name="pages")
+@click.argument("filepath", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--page-size",
+    "-s",
+    type=int,
+    default=2000,
+    help="Synthetic page size in characters (default: 2000)",
+)
+@click.option(
+    "--use-words",
+    "-w",
+    is_flag=True,
+    help="Use word count instead of character count for synthetic pages",
+)
+def list_pages(filepath: Path, page_size: int, use_words: bool) -> None:
+    """
+    List all pages in an EPUB file.
+
+    If the EPUB contains a page-list navigation (original print page references),
+    those pages will be displayed. Otherwise, synthetic pages are generated
+    based on the --page-size option.
+    """
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            progress.add_task(f"Loading {filepath.name}...", total=None)
+            parser = EPUBParser(str(filepath))
+            all_pages = parser.get_pages(
+                synthetic_page_size=page_size,
+                use_words=use_words,
+            )
+            has_page_list = parser.has_page_list()
+            progress.stop()
+
+        if not all_pages:
+            console.print("[yellow]No pages found in EPUB file.[/yellow]")
+            return
+
+        # Show page source info
+        if has_page_list:
+            console.print(
+                f"\n[bold]Found {len(all_pages)} page(s) from EPUB page-list "
+                f"in {filepath.name}[/bold]"
+            )
+            console.print(
+                "[dim](These correspond to original print book pages)[/dim]\n"
+            )
+        else:
+            unit = "words" if use_words else "characters"
+            console.print(
+                f"\n[bold]Generated {len(all_pages)} synthetic page(s) "
+                f"in {filepath.name}[/bold]"
+            )
+            console.print(
+                f"[dim](No page-list found, using ~{page_size:,} {unit} "
+                f"per page)[/dim]\n"
+            )
+
+        display_pages_table(all_pages)
+
+        # Show summary
+        total_chars = sum(p.char_count for p in all_pages)
+        console.print(f"\n[dim]Total: {total_chars:,} characters[/dim]")
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        sys.exit(1)
+
+
+@cli.command(name="extract-pages")
+@click.argument("filepath", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(path_type=Path),
+    help="Output file path (default: stdout)",
+)
+@click.option(
+    "--pages",
+    "-p",
+    type=str,
+    help="Page range (e.g., '1-5,7,9-12') - uses 1-based indices",
+)
+@click.option(
+    "--page-size",
+    "-s",
+    type=int,
+    default=2000,
+    help="Synthetic page size in characters (default: 2000)",
+)
+@click.option(
+    "--use-words",
+    "-w",
+    is_flag=True,
+    help="Use word count instead of character count for synthetic pages",
+)
+@click.option("--raw", is_flag=True, help="Disable all text cleaning")
+@click.option(
+    "--no-markers",
+    is_flag=True,
+    help="Hide <<PAGE: ...>> and <<CHAPTER: ...>> markers from output",
+)
+@click.option(
+    "--show-front-matter",
+    is_flag=True,
+    help="Show front matter (TOC, Acknowledgements, etc.) - default is to hide",
+)
+@click.option(
+    "--keep-duplicate-titles",
+    is_flag=True,
+    help="Keep duplicate chapter titles in page content (don't deduplicate)",
+)
+def extract_pages_cmd(
+    filepath: Path,
+    output: Optional[Path],
+    pages: Optional[str],
+    page_size: int,
+    use_words: bool,
+    raw: bool,
+    no_markers: bool,
+    show_front_matter: bool,
+    keep_duplicate_titles: bool,
+) -> None:
+    """
+    Extract text from EPUB file by pages.
+
+    If the EPUB contains a page-list navigation (original print page references),
+    those pages will be used. Otherwise, synthetic pages are generated.
+
+    Pages are organized by chapters with <<CHAPTER: ...>> markers showing chapter
+    transitions. Duplicate chapter titles in content are automatically removed.
+
+    By default, front matter (TOC, acknowledgements, etc.) is hidden. Use
+    --show-front-matter to include it.
+
+    Examples:
+
+        epub2text extract-pages book.epub
+
+        epub2text extract-pages book.epub --pages 1-10
+
+        epub2text extract-pages book.epub --show-front-matter
+
+        epub2text extract-pages book.epub --page-size 500
+
+        epub2text extract-pages book.epub --use-words --page-size 350
+    """
+    try:
+        # Load EPUB
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            progress.add_task(f"Loading {filepath.name}...", total=None)
+            parser = EPUBParser(str(filepath), paragraph_separator="\n\n")
+            all_pages = parser.get_pages(
+                synthetic_page_size=page_size,
+                use_words=use_words,
+            )
+            has_page_list = parser.has_page_list()
+            progress.stop()
+
+        if not all_pages:
+            console.print("[yellow]No pages found in EPUB file.[/yellow]")
+            return
+
+        # Show page source info to stderr
+        if has_page_list:
+            console.print(
+                f"[dim]Using {len(all_pages)} pages from EPUB page-list[/dim]",
+            )
+        else:
+            unit = "words" if use_words else "characters"
+            console.print(
+                f"[dim]Generated {len(all_pages)} synthetic pages "
+                f"(~{page_size:,} {unit} each)[/dim]",
+            )
+
+        # Determine which pages to extract
+        page_numbers = None
+        if pages:
+            try:
+                page_numbers = parse_page_range(pages, all_pages)
+                if not page_numbers:
+                    console.print("[red]No valid pages found in range.[/red]")
+                    sys.exit(1)
+            except (ValueError, IndexError) as e:
+                console.print(f"[red]Invalid page range: {e}[/red]")
+                sys.exit(1)
+
+        # Extract text with deduplication and TOC options
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            progress.add_task("Extracting pages...", total=None)
+            text = parser.extract_pages(
+                page_numbers=page_numbers,
+                deduplicate_chapter_titles=not keep_duplicate_titles,
+                skip_toc=not show_front_matter,  # Invert: skip unless --show-front-matter is set
+            )
+            progress.stop()
+
+        # Remove markers if requested
+        if no_markers:
+            text = re.sub(r"<<PAGE:[^>]*>>\n*", "", text)
+            text = re.sub(r"<<CHAPTER:[^>]*>>\n*", "", text)
+
+        # Apply cleaning if enabled
+        if not raw:
+            cleaner = TextCleaner(
+                remove_footnotes=True,
+                remove_page_numbers=True,
+                preserve_single_newlines=False,  # Preserve paragraph breaks (\n\n)
+            )
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                progress.add_task("Cleaning text...", total=None)
+                text = cleaner.clean(text)
+                progress.stop()
+
+        # Output
+        if output:
+            output.write_text(text, encoding="utf-8")
+            console.print(
+                f"\n[green]✓[/green] Extracted {len(text):,} characters to {output}"
+            )
+        else:
+            # Write to stdout (bypass rich console)
+            print(text)
 
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
@@ -524,6 +977,219 @@ def extract(
         sys.exit(1)
 
 
+@cli.command(name="extract-gutenberg")
+@click.argument("filepath", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "-o",
+    "--output",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output file path (default: {book-title}.txt)",
+)
+@click.option(
+    "--chapters",
+    "-c",
+    type=str,
+    default=None,
+    help="Chapter range to extract (e.g., '1-5,7,9-12')",
+)
+@click.option(
+    "-i",
+    "--interactive",
+    is_flag=True,
+    help="Interactive chapter selection",
+)
+def extract_gutenberg(
+    filepath: Path,
+    output: Optional[Path],
+    chapters: Optional[str],
+    interactive: bool,
+) -> None:
+    """
+    Extract text in Project Gutenberg format.
+
+    Produces a complete book with:
+    - Project Gutenberg header with metadata
+    - Title and author
+    - Table of Contents
+    - Formatted chapters with proper spacing
+    - Two spaces after sentences and colons
+
+    By default, outputs to {book-title}.txt if no output file is specified.
+
+    Examples:
+
+        epub2text extract-gutenberg book.epub
+
+        epub2text extract-gutenberg book.epub -o output.txt
+
+        epub2text extract-gutenberg book.epub --chapters 1-5
+    """
+    try:
+        # Load EPUB
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            progress.add_task(f"Loading {filepath.name}...", total=None)
+            parser = EPUBParser(str(filepath), paragraph_separator="\n\n")
+            metadata = parser.get_metadata()
+            all_chapters = parser.get_chapters()
+            progress.stop()
+
+        if not all_chapters:
+            console.print("[yellow]No chapters found in EPUB file.[/yellow]")
+            return
+
+        # Get book title
+        title = metadata.title or "Unknown Title"
+
+        # Determine which chapters to extract
+        chapter_ids = None
+        selected_chapters = all_chapters
+
+        if interactive:
+            display_chapters_table(all_chapters)
+            chapter_ids = interactive_chapter_selection(all_chapters)
+            selected_chapters = [ch for ch in all_chapters if ch.id in chapter_ids]
+        elif chapters:
+            try:
+                indices = parse_chapter_range(chapters)
+                chapter_ids = [
+                    all_chapters[i].id for i in indices if 0 <= i < len(all_chapters)
+                ]
+                selected_chapters = [ch for ch in all_chapters if ch.id in chapter_ids]
+            except (ValueError, IndexError) as e:
+                console.print(f"[red]Invalid chapter range: {e}[/red]")
+                sys.exit(1)
+
+        # Build the complete Gutenberg-formatted book
+        book_parts = []
+
+        # 1. Generate header
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            progress.add_task("Generating header...", total=None)
+            header = generate_gutenberg_header(metadata, title)
+            book_parts.append(header)
+            progress.stop()
+
+        # 2. Add title and author
+        book_parts.append(title)
+        book_parts.append("")
+        if metadata.authors:
+            author_str = ", ".join(metadata.authors)
+            book_parts.append(f"by {author_str}")
+            book_parts.append("")
+
+        # 3. Generate Table of Contents (only from non-front-matter chapters)
+        # Filter out front matter chapters
+        front_matter_titles = {
+            "INTRODUCTION",
+            "CONTENTS",
+            "ACKNOWLEDGEMENTS",
+            "FOREWORD",
+            "PREFACE",
+            "ACKNOWLEDGMENTS",
+        }
+        content_chapters = [
+            ch
+            for ch in selected_chapters
+            if ch.title.upper() not in front_matter_titles
+        ]
+
+        book_parts.append("")
+        toc = generate_table_of_contents(content_chapters)
+        book_parts.append(toc)
+
+        # 4. Extract and format chapters
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            progress.add_task("Extracting chapters...", total=None)
+
+            # Extract raw chapter text
+            chapter_text = parser.extract_chapters(chapter_ids)
+
+            # Clean the text
+            cleaner = TextCleaner(
+                remove_footnotes=True,
+                remove_page_numbers=True,
+                preserve_single_newlines=False,  # Allow paragraph joining
+            )
+            chapter_text = cleaner.clean(chapter_text)
+
+            progress.stop()
+
+        # 5. Split into individual chapters and format each one
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            progress.add_task("Formatting chapters...", total=None)
+
+            # Split by chapter markers
+            chapter_pattern = re.compile(r"<<CHAPTER:([^>]*)>>")
+            parts = chapter_pattern.split(chapter_text)
+
+            # Process each chapter (skip front matter)
+            for i in range(1, len(parts), 2):
+                if i < len(parts):
+                    chapter_title = parts[i].strip()
+                    chapter_content = parts[i + 1].strip() if i + 1 < len(parts) else ""
+
+                    # Skip front matter chapters
+                    if chapter_title.upper() in front_matter_titles:
+                        continue
+
+                    if chapter_content:
+                        # Add 3 blank lines before chapter (4 newlines total)
+                        book_parts.append("")
+                        book_parts.append("")
+                        book_parts.append("")
+
+                        # Add chapter title in uppercase
+                        book_parts.append(chapter_title.upper())
+                        book_parts.append("")
+
+                        # Wrap text at 72 characters (Project Gutenberg style)
+                        formatted_content = wrap_text_gutenberg(
+                            chapter_content, width=72
+                        )
+                        book_parts.append(formatted_content)
+
+            progress.stop()
+
+        # 6. Join all parts
+        final_text = "\n".join(book_parts)
+
+        # 7. Determine output file
+        if output is None:
+            # Generate filename from title
+            safe_title = re.sub(r"[^\w\s-]", "", title).strip().replace(" ", "-")
+            output = Path(f"{safe_title}.txt")
+
+        # 8. Write output
+        output.write_text(final_text, encoding="utf-8")
+        console.print(
+            f"\n[green]✓[/green] Extracted {len(final_text):,} characters to {output}"
+        )
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        import traceback
+
+        traceback.print_exc()
+        sys.exit(1)
+
+
 @cli.command()
 @click.argument("filepath", type=click.Path(exists=True, path_type=Path))
 @click.option(
@@ -545,10 +1211,21 @@ def info(filepath: Path, format: str) -> None:
             parser = EPUBParser(str(filepath))
             metadata = parser.get_metadata()
             chapters = parser.get_chapters()
+            has_page_list = parser.has_page_list()
             progress.stop()
 
         # Calculate summary stats
         total_chars = sum(ch.char_count for ch in chapters)
+
+        # Get page info
+        if has_page_list:
+            pages = parser.get_pages()
+            page_count = len(pages)
+            page_source = "print"
+        else:
+            # Estimate synthetic pages at default size (2000 chars)
+            page_count = max(1, total_chars // 2000)
+            page_source = "estimated"
 
         if format == "table":
             # Display as table
@@ -586,6 +1263,10 @@ def info(filepath: Path, format: str) -> None:
                 )
                 table.add_row("Description", desc)
             table.add_row("Chapters", str(len(chapters)))
+            if page_source == "print":
+                table.add_row("Pages", f"{page_count} (from page-list)")
+            else:
+                table.add_row("Pages", f"~{page_count} (estimated)")
             table.add_row("Total Characters", f"{total_chars:,}")
 
             console.print(table)
@@ -606,6 +1287,8 @@ def info(filepath: Path, format: str) -> None:
                 "coverage": metadata.coverage,
                 "description": metadata.description,
                 "chapters": len(chapters),
+                "pages": page_count,
+                "has_page_list": has_page_list,
                 "total_characters": total_chars,
             }
             print(json.dumps(data, indent=2, ensure_ascii=False))
@@ -641,6 +1324,10 @@ def info(filepath: Path, format: str) -> None:
                 info_lines.append(f"[bold]Description:[/bold] {desc}")
 
             info_lines.append(f"\n[bold]Chapters:[/bold] {len(chapters)}")
+            if page_source == "print":
+                info_lines.append(f"[bold]Pages:[/bold] {page_count} (from page-list)")
+            else:
+                info_lines.append(f"[bold]Pages:[/bold] ~{page_count} (estimated)")
             info_lines.append(f"[bold]Total Characters:[/bold] {total_chars:,}")
 
             panel = Panel(

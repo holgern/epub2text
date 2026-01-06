@@ -1,7 +1,36 @@
-"""Data models for EPUB chapters and metadata."""
+"""Data models for EPUB chapters, pages, and metadata."""
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Optional
+
+
+class PageSource(Enum):
+    """Source of page information."""
+
+    EPUB_PAGE_LIST = "epub_page_list"  # From EPUB page-list navigation
+    SYNTHETIC = "synthetic"  # Generated from content
+
+
+@dataclass
+class Page:
+    """Represents a single page in an EPUB.
+
+    Pages can come from two sources:
+    1. EPUB page-list navigation (original print book pages)
+    2. Synthetic generation (arbitrary page size based on characters/words)
+    """
+
+    page_number: str  # Can be "i", "ii", "1", "2", etc.
+    text: str
+    char_count: int
+    source: PageSource
+    chapter_id: Optional[str] = None  # Which chapter this page belongs to
+    chapter_title: Optional[str] = None  # Title of the chapter
+
+    def __str__(self) -> str:
+        source_str = "print" if self.source == PageSource.EPUB_PAGE_LIST else "syn"
+        return f"Page {self.page_number} ({self.char_count:,} chars, {source_str})"
 
 
 @dataclass

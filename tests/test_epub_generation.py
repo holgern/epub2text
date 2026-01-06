@@ -1207,3 +1207,305 @@ Second paragraph, also with clause."""
         assert ". . ." in result or "..." in result
         lines = result.split("\n")
         assert len(lines) == 2  # Split at comma only
+
+
+class TestPageExtraction:
+    """Test page extraction functionality."""
+
+    @pytest.fixture
+    def simple_epub_for_pages(self, tmp_path: Path) -> Path:
+        """Create a simple EPUB with multiple chapters for page testing."""
+        epub_path = tmp_path / "pages_test_book.epub"
+
+        book = pypub.Epub("Pages Test Book", creator="Page Author")
+
+        # Create chapters with substantial content for synthetic pages
+        chapter1 = pypub.create_chapter_from_text(
+            "This is the first chapter of the book. "
+            "It contains enough content to span multiple synthetic pages. " * 50,
+            title="Chapter 1: Introduction",
+        )
+
+        chapter2 = pypub.create_chapter_from_text(
+            "The second chapter continues with more content. "
+            "Here we have additional text for page extraction testing. " * 50,
+            title="Chapter 2: Middle",
+        )
+
+        chapter3 = pypub.create_chapter_from_text(
+            "Finally, the conclusion chapter wraps up the book. "
+            "This is the final content of our test book. " * 30,
+            title="Chapter 3: Conclusion",
+        )
+
+        book.add_chapter(chapter1)
+        book.add_chapter(chapter2)
+        book.add_chapter(chapter3)
+
+        book.create(str(epub_path))
+        return epub_path
+
+    @pytest.fixture
+    def short_epub_for_pages(self, tmp_path: Path) -> Path:
+        """Create a short EPUB that fits in one page."""
+        epub_path = tmp_path / "short_pages_book.epub"
+
+        book = pypub.Epub("Short Pages Test", creator="Short Author")
+
+        chapter = pypub.create_chapter_from_text(
+            "This is a short chapter with just a little content.",
+            title="Short Chapter",
+        )
+
+        book.add_chapter(chapter)
+        book.create(str(epub_path))
+        return epub_path
+
+    def test_get_pages_returns_pages(self, simple_epub_for_pages: Path) -> None:
+        """Test that get_pages returns Page objects."""
+        from epub2text import Page, PageSource
+
+        parser = EPUBParser(str(simple_epub_for_pages))
+        pages = parser.get_pages()
+
+        assert len(pages) > 0
+        for page in pages:
+            assert isinstance(page, Page)
+            assert page.page_number is not None
+            assert page.text is not None
+            assert page.char_count >= 0
+            assert page.source == PageSource.SYNTHETIC  # pypub doesn't create page-list
+
+    def test_synthetic_pages_have_correct_size(
+        self, simple_epub_for_pages: Path
+    ) -> None:
+        """Test that synthetic pages are approximately the requested size."""
+        parser = EPUBParser(str(simple_epub_for_pages))
+        pages = parser.get_pages(synthetic_page_size=1000)
+
+        # Most pages should be close to 1000 chars (except possibly the last)
+        for page in pages[:-1]:  # Skip last page
+            assert page.char_count > 0
+            # Allow some tolerance
+            assert page.char_count <= 1200, f"Page too large: {page.char_count}"
+
+    def test_synthetic_pages_by_words(self, simple_epub_for_pages: Path) -> None:
+        """Test synthetic page generation by word count."""
+        parser = EPUBParser(str(simple_epub_for_pages))
+        pages = parser.get_pages(synthetic_page_size=50, use_words=True)
+
+        assert len(pages) > 0
+        # Each page should have approximately 50 words (except last)
+        for page in pages[:-1]:
+            word_count = len(page.text.split())
+            assert word_count > 0
+            assert word_count <= 60, f"Page has too many words: {word_count}"
+
+    def test_pages_have_chapter_info(self, simple_epub_for_pages: Path) -> None:
+        """Test that synthetic pages include chapter information."""
+        parser = EPUBParser(str(simple_epub_for_pages))
+        pages = parser.get_pages()
+
+        # At least some pages should have chapter info
+        pages_with_chapter = [p for p in pages if p.chapter_title]
+        assert len(pages_with_chapter) > 0
+
+    def test_has_page_list_returns_false_for_simple_epub(
+        self, simple_epub_for_pages: Path
+    ) -> None:
+        """Test that has_page_list returns False for EPUB without page-list."""
+        parser = EPUBParser(str(simple_epub_for_pages))
+        assert parser.has_page_list() is False
+
+    def test_extract_pages_returns_text(self, simple_epub_for_pages: Path) -> None:
+        """Test that extract_pages returns combined text."""
+        parser = EPUBParser(str(simple_epub_for_pages))
+        text = parser.extract_pages()
+
+        assert len(text) > 0
+        assert "<<PAGE:" in text  # Should have page markers
+
+    def test_extract_specific_pages(self, simple_epub_for_pages: Path) -> None:
+        """Test extracting specific pages by number."""
+        parser = EPUBParser(str(simple_epub_for_pages))
+        pages = parser.get_pages()
+
+        if len(pages) >= 3:
+            # Extract only pages 1 and 3
+            page_numbers = [pages[0].page_number, pages[2].page_number]
+            text = parser.extract_pages(page_numbers)
+
+            assert f"<<PAGE: {pages[0].page_number}>>" in text
+            assert f"<<PAGE: {pages[2].page_number}>>" in text
+            # Page 2 should not be included
+            if pages[1].page_number not in page_numbers:
+                assert f"<<PAGE: {pages[1].page_number}>>" not in text
+
+    def test_short_epub_creates_one_page(self, short_epub_for_pages: Path) -> None:
+        """Test that a short EPUB creates pages (one per chapter)."""
+        parser = EPUBParser(str(short_epub_for_pages))
+        pages = parser.get_pages(synthetic_page_size=5000)  # Large page size
+
+        # With the new behavior, each chapter starts a new page
+        # So even a short EPUB will have multiple pages if it has multiple chapters
+        assert len(pages) >= 1
+
+        # Verify the content is in one of the pages
+        all_text = " ".join(p.text.lower() for p in pages)
+        assert "short chapter" in all_text
+
+    def test_page_numbers_are_sequential(self, simple_epub_for_pages: Path) -> None:
+        """Test that synthetic page numbers are sequential strings."""
+        parser = EPUBParser(str(simple_epub_for_pages))
+        pages = parser.get_pages()
+
+        for i, page in enumerate(pages, 1):
+            assert page.page_number == str(i)
+
+    def test_page_model_str_representation(self, simple_epub_for_pages: Path) -> None:
+        """Test the __str__ method of Page class."""
+        from epub2text import Page, PageSource
+
+        page = Page(
+            page_number="42",
+            text="Some content",
+            char_count=12,
+            source=PageSource.SYNTHETIC,
+        )
+
+        page_str = str(page)
+        assert "42" in page_str
+        assert "12" in page_str
+        assert "syn" in page_str
+
+    def test_page_source_epub_page_list_str(self) -> None:
+        """Test PageSource.EPUB_PAGE_LIST string representation in Page."""
+        from epub2text import Page, PageSource
+
+        page = Page(
+            page_number="100",
+            text="Print page content",
+            char_count=18,
+            source=PageSource.EPUB_PAGE_LIST,
+        )
+
+        page_str = str(page)
+        assert "print" in page_str
+
+
+class TestPageExtractionCLI:
+    """Test CLI page extraction commands."""
+
+    @pytest.fixture
+    def pages_epub(self, tmp_path: Path) -> Path:
+        """Create an EPUB for CLI testing."""
+        epub_path = tmp_path / "cli_pages_book.epub"
+
+        book = pypub.Epub("CLI Pages Test", creator="CLI Author")
+
+        for i in range(3):
+            chapter = pypub.create_chapter_from_text(
+                f"Content for chapter {i + 1}. " * 100,
+                title=f"Chapter {i + 1}",
+            )
+            book.add_chapter(chapter)
+
+        book.create(str(epub_path))
+        return epub_path
+
+    def test_pages_command_lists_pages(self, pages_epub: Path) -> None:
+        """Test the 'pages' CLI command."""
+        from click.testing import CliRunner
+
+        from epub2text.cli import cli
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["pages", str(pages_epub)])
+
+        assert result.exit_code == 0
+        assert "Pages" in result.output or "page" in result.output.lower()
+
+    def test_pages_command_with_page_size(self, pages_epub: Path) -> None:
+        """Test the 'pages' command with custom page size."""
+        from click.testing import CliRunner
+
+        from epub2text.cli import cli
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["pages", str(pages_epub), "--page-size", "500"])
+
+        assert result.exit_code == 0
+        # Should generate more pages with smaller page size
+        assert "synthetic" in result.output.lower()
+
+    def test_pages_command_with_words(self, pages_epub: Path) -> None:
+        """Test the 'pages' command with word-based pages."""
+        from click.testing import CliRunner
+
+        from epub2text.cli import cli
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["pages", str(pages_epub), "--use-words", "--page-size", "100"]
+        )
+
+        assert result.exit_code == 0
+        assert "words" in result.output.lower()
+
+    def test_extract_pages_command(self, pages_epub: Path) -> None:
+        """Test the 'extract-pages' CLI command."""
+        from click.testing import CliRunner
+
+        from epub2text.cli import cli
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["extract-pages", str(pages_epub)])
+
+        assert result.exit_code == 0
+        assert "<<PAGE:" in result.output
+
+    def test_extract_pages_no_markers(self, pages_epub: Path) -> None:
+        """Test 'extract-pages' with --no-markers option."""
+        from click.testing import CliRunner
+
+        from epub2text.cli import cli
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["extract-pages", str(pages_epub), "--no-markers"])
+
+        assert result.exit_code == 0
+        assert "<<PAGE:" not in result.output
+
+    def test_extract_pages_range(self, pages_epub: Path) -> None:
+        """Test 'extract-pages' with page range selection."""
+        from click.testing import CliRunner
+
+        from epub2text.cli import cli
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["extract-pages", str(pages_epub), "--pages", "1-2", "--show-front-matter"],
+        )
+
+        assert result.exit_code == 0
+        # Should have page 1 and 2
+        assert "<<PAGE: 1>>" in result.output
+        assert "<<PAGE: 2>>" in result.output
+
+    def test_extract_pages_to_file(self, pages_epub: Path, tmp_path: Path) -> None:
+        """Test 'extract-pages' output to file."""
+        from click.testing import CliRunner
+
+        from epub2text.cli import cli
+
+        output_file = tmp_path / "pages_output.txt"
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["extract-pages", str(pages_epub), "-o", str(output_file)]
+        )
+
+        assert result.exit_code == 0
+        assert output_file.exists()
+        content = output_file.read_text()
+        assert "<<PAGE:" in content

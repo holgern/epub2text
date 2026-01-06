@@ -11,7 +11,7 @@ import urllib.request
 from pathlib import Path
 from typing import Union
 from .parser import EPUBParser
-from .models import Chapter, Metadata
+from .models import Chapter, Metadata, Page, PageSource
 from .cleaner import clean_text, TextCleaner
 from .bookmarks import Bookmark, BookmarkManager
 from .reader import EpubReader, ReaderState
@@ -20,6 +20,8 @@ __all__ = [
     "EPUBParser",
     "Chapter",
     "Metadata",
+    "Page",
+    "PageSource",
     "clean_text",
     "TextCleaner",
     "epub2txt",

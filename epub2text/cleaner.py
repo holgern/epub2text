@@ -14,6 +14,43 @@ _MULTIPLE_NEWLINES_PATTERN = re.compile(r"\n{3,}")
 _SINGLE_NEWLINE_PATTERN = re.compile(r"(?<!\n)\n(?!\n)")
 _CHAPTER_MARKER_PATTERN = re.compile(r"<<CHAPTER_MARKER:[^>]*>>")
 _METADATA_TAG_PATTERN = re.compile(r"<<METADATA_[^:]+:[^>]*>>")
+# Pattern to match chapter and page markers used in extract_pages/extract_chapters
+_PAGE_CHAPTER_MARKER_PATTERN = re.compile(r"<<(?:CHAPTER|PAGE):[^>]*>>")
+
+
+# Common abbreviations that should NOT get double spacing after period
+ABBREVIATIONS = {
+    "Mr",
+    "Mrs",
+    "Ms",
+    "Dr",
+    "Prof",
+    "Sr",
+    "Jr",
+    "vs",
+    "etc",
+    "i.e",
+    "e.g",
+    "Ph.D",
+    "M.D",
+    "B.A",
+    "M.A",
+    "D.C.L",
+    "L.L.D",
+    "F.R.S",
+    "St",
+    "Rev",
+    "Hon",
+    "Messrs",
+    "Mmes",
+    "Msgr",
+    "U.S",
+    "U.K",
+    "A.M",
+    "P.M",
+    "a.m",
+    "p.m",
+}
 
 
 class TextCleaner:
@@ -54,6 +91,18 @@ class TextCleaner:
         Returns:
             Cleaned text
         """
+        # Protect chapter and page markers by temporarily replacing them
+        markers = {}
+        marker_count = [0]
+
+        def save_marker(match):
+            placeholder = f"___MARKER_{marker_count[0]}___"
+            markers[placeholder] = match.group(0)
+            marker_count[0] += 1
+            return placeholder
+
+        text = _PAGE_CHAPTER_MARKER_PATTERN.sub(save_marker, text)
+
         # Remove metadata tags
         text = _METADATA_TAG_PATTERN.sub("", text)
 
@@ -87,6 +136,91 @@ class TextCleaner:
         # Unless preserve_single_newlines is True (for compact format)
         if self.replace_single_newlines and not self.preserve_single_newlines:
             text = _SINGLE_NEWLINE_PATTERN.sub(" ", text)
+
+        # Restore protected markers
+        for placeholder, marker in markers.items():
+            text = text.replace(placeholder, marker)
+
+        return text
+
+    def apply_gutenberg_spacing(self, text: str) -> str:
+        """Apply Gutenberg Project formatting: two spaces after sentences and colons.
+
+        Uses phrasplit for accurate sentence boundary detection.
+
+        Args:
+            text: Text to format
+
+        Returns:
+            Text with Gutenberg spacing
+        """
+        try:
+            from phrasplit import split_sentences
+        except ImportError:
+            # Fallback to simple regex if phrasplit not available
+            return self._apply_gutenberg_spacing_simple(text)
+
+        # Process text paragraph by paragraph to preserve structure
+        paragraphs = text.split("\n\n")
+        result_paragraphs = []
+
+        for para in paragraphs:
+            if not para.strip():
+                result_paragraphs.append(para)
+                continue
+
+            # Split paragraph into sentences
+            sentences = split_sentences(para)
+
+            # Join sentences with double spaces
+            formatted = "  ".join(sentences)
+            result_paragraphs.append(formatted)
+
+        # Rejoin paragraphs
+        result = "\n\n".join(result_paragraphs)
+
+        # Two spaces after ALL colons (apply after sentence joining)
+        result = re.sub(r":\s+", r":  ", result)
+
+        return result
+
+    def _apply_gutenberg_spacing_simple(self, text: str) -> str:
+        """Fallback method for Gutenberg spacing without phrasplit.
+
+        Args:
+            text: Text to format
+
+        Returns:
+            Text with Gutenberg spacing
+        """
+        # Protect abbreviations
+        abbrev_map = {}
+        abbrev_counter = [0]
+
+        def protect_abbrev(match):
+            placeholder = f"__ABBREV_{abbrev_counter[0]}__"
+            abbrev_map[placeholder] = match.group(0)
+            abbrev_counter[0] += 1
+            return placeholder
+
+        for abbr in ABBREVIATIONS:
+            text = re.sub(
+                rf"\b{re.escape(abbr)}\.\s", protect_abbrev, text, flags=re.IGNORECASE
+            )
+
+        # Two spaces after colons
+        text = re.sub(r":\s+", r":  ", text)
+
+        # Two spaces after sentence-ending punctuation
+        text = re.sub(r'\.\s+([A-Z"\'])', r".  \1", text)
+        text = re.sub(r'([!?])\s+([A-Z"\'])', r"\1  \2", text)
+
+        # Restore abbreviations
+        for placeholder, original in abbrev_map.items():
+            text = text.replace(placeholder, original)
+
+        # Clean up triple+ spaces
+        text = re.sub(r" {3,}", "  ", text)
 
         return text
 

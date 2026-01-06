@@ -39,7 +39,6 @@ from epub2text.formatters import (
     split_paragraphs,
 )
 
-
 # =============================================================================
 # EPUB Creation Examples
 # =============================================================================
@@ -438,7 +437,10 @@ def example_cleaner_options() -> None:
     print("EXAMPLE: TextCleaner Options")
     print("=" * 60)
 
-    sample = "Text [1] with footnotes [23] and   extra   spaces.\n\nNew paragraph here.\n- Page 42 -"
+    sample = (
+        "Text [1] with footnotes [23] and   extra   spaces.\n\n"
+        "New paragraph here.\n- Page 42 -"
+    )
 
     # Default cleaning
     default = TextCleaner().clean(sample)
@@ -552,7 +554,7 @@ def example_formatters_sentences() -> None:
         print("  pip install epub2text[sentences]")
         return
 
-    text = """Dr. Smith went to Washington D.C. for a meeting. She arrived 
+    text = """Dr. Smith went to Washington D.C. for a meeting. She arrived
 at 3 p.m. and stayed until evening. The conference was very productive.
 
 This is a new paragraph. It has multiple sentences too! And even questions?"""
@@ -584,7 +586,8 @@ def example_formatters_clauses() -> None:
 
     text = """When the sun rises, the birds begin to sing, and the world slowly awakens.
 
-Complex sentences, like this one, benefit from clause splitting, which creates natural pauses."""
+Complex sentences, like this one, benefit from clause splitting,
+which creates natural pauses."""
 
     formatted = format_clauses(text, separator="  ")
 
@@ -611,14 +614,20 @@ def example_formatters_long_lines() -> None:
         print("  pip install epub2text[sentences]")
         return
 
-    long_text = """This is an extremely long line that contains multiple sentences and clauses, which would be difficult to read on a narrow display, but can be intelligently split at natural boundaries like sentence endings, comma positions, and other punctuation marks to improve readability."""
+    long_text = (
+        "This is an extremely long line that contains multiple sentences "
+        "and clauses, which would be difficult to read on a narrow display, "
+        "but can be intelligently split at natural boundaries like sentence "
+        "endings, comma positions, and other punctuation marks to improve "
+        "readability."
+    )
 
     split = split_long_lines(long_text, max_length=60, separator="")
 
     print(f"\nOriginal ({len(long_text)} chars):")
     print(long_text)
 
-    print(f"\nSplit at max 60 chars:")
+    print("\nSplit at max 60 chars:")
     for line in split.split("\n"):
         print(f"  [{len(line):2d}] {line}")
 
@@ -664,7 +673,7 @@ def example_bookmarks(epub_path: Path) -> None:
     # Load bookmark
     loaded = manager.load(str(epub_path))
     if loaded:
-        print(f"\nLoaded bookmark:")
+        print("\nLoaded bookmark:")
         print(f"  Chapter: {loaded.chapter_index}")
         print(f"  Progress: {loaded.percentage:.1f}%")
 
