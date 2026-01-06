@@ -614,14 +614,15 @@ def extract_pages_cmd(
             text = parser.extract_pages(
                 page_numbers=page_numbers,
                 deduplicate_chapter_titles=not keep_duplicate_titles,
-                skip_toc=not show_front_matter,  # Invert: skip unless --show-front-matter is set
+                # Invert: skip TOC unless --show-front-matter is set
+                skip_toc=not show_front_matter,
             )
             progress.stop()
 
         # Remove markers if requested
         if no_markers:
             text = re.sub(r"<<PAGE:[^>]*>>\n*", "", text)
-            # Remove chapter titles: lines preceded by 4+ newlines and followed by 2+ newlines
+            # Remove chapter titles: 4+ newlines + title + 2+ newlines
             text = re.sub(r"\n{4,}[^\n]+\n{2,}", "\n\n", text)
 
         # Apply cleaning if enabled
@@ -821,10 +822,14 @@ def extract(
 
         # Remove chapter markers if requested (do this early)
         if no_markers:
-            # Remove chapter titles: lines preceded by 4+ newlines and followed by 2+ newlines
+            # Remove chapter titles: 4+ newlines + title + 2+ newlines
             # Also handle first chapter (no leading newlines)
             text = re.sub(
-                r"(^|\n{4,})[^\n]+\n{2,}", "\n\n", text, count=0, flags=re.MULTILINE
+                r"(^|\n{4,})[^\n]+\n{2,}",
+                "\n\n",
+                text,
+                count=0,
+                flags=re.MULTILINE,
             )
 
         # Apply cleaning if enabled

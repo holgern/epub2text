@@ -242,19 +242,24 @@ The smart text cleaner applies the following transformations by default:
 
 ## Chapter Format
 
-Extracted text includes chapter markers in the format:
+Extracted text includes chapter titles with clear visual separation:
 
 ```
-<<CHAPTER: Chapter Title>>
+Chapter Title
 
 Chapter text content here...
 
-<<CHAPTER: Next Chapter>>
+
+
+Next Chapter
 
 More content...
 ```
 
-Use `--no-markers` to hide chapter markers.
+The first chapter appears as `{title}\n\n{content}`, while subsequent chapters are
+separated by four linebreaks before the title, then two linebreaks after the title.
+
+Use `--no-markers` to hide chapter titles from the output.
 
 ## Requirements
 

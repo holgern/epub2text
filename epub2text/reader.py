@@ -1,6 +1,5 @@
 """Interactive terminal reader for EPUB content."""
 
-import re
 import signal
 import sys
 from dataclasses import dataclass

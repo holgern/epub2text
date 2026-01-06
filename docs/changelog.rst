@@ -33,7 +33,7 @@ Changed
 ~~~~~~~
 
 - **BREAKING**: Chapter format changed from ``<<CHAPTER: Title>>`` to clean separation with newlines
-  
+
   - First chapter: ``{title}\n\n{content}``
   - Subsequent chapters: ``\n\n\n\n{title}\n\n{content}``
   - Four linebreaks before chapter title, two linebreaks after

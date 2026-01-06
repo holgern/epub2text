@@ -193,7 +193,8 @@ class TestTitleDeduplication:
         # Extract with deduplication (default)
         text = parser.extract_chapters(deduplicate_chapter_titles=True)
 
-        # Chapter should have title in new format (preceded by 4 newlines or at start, followed by 2 newlines)
+        # Chapter should have title in new format (preceded by 4 newlines
+        # or at start, followed by 2 newlines)
         assert "\n\n\n\nONE\n\n" in text or "ONE\n\n" in text
 
         # The title should not appear again after being shown as chapter title
@@ -207,7 +208,7 @@ class TestTitleDeduplication:
         assert chapter_title_idx is not None
         # Next non-empty line should not be "ONE" (deduplication worked)
         next_lines = [
-            l.strip() for l in lines[chapter_title_idx + 3 :] if l.strip()
+            line.strip() for line in lines[chapter_title_idx + 3 :] if line.strip()
         ]  # Skip 2 newlines after title
         if next_lines:
             assert next_lines[0] != "ONE"
@@ -226,7 +227,8 @@ class TestTitleDeduplication:
         # The chapter title should still be there in new format
         assert "\n\n\n\nONE\n\n" in text or "ONE\n\n" in text
         # Original text should be preserved (may contain title)
-        # This test just ensures the parameter works, actual content depends on EPUB structure
+        # This test ensures the parameter works, actual content depends on
+        # EPUB structure
 
     def test_deduplication_preserves_content(
         self, epub_with_duplicate_titles: Path

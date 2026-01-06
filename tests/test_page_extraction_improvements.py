@@ -74,7 +74,7 @@ class TestPageExtractionImprovements:
         parser = EPUBParser(str(epub_with_chapters))
 
         # Extract pages with small page size to get multiple pages per chapter
-        pages = parser.get_pages(synthetic_page_size=100, use_words=False)
+        parser.get_pages(synthetic_page_size=100, use_words=False)
         text = parser.extract_pages()
 
         # Should contain chapter titles (new format: title preceded by newlines)
@@ -92,10 +92,11 @@ class TestPageExtractionImprovements:
         parser = EPUBParser(str(epub_with_chapters))
 
         # Extract with small page size
-        pages = parser.get_pages(synthetic_page_size=100, use_words=False)
+        parser.get_pages(synthetic_page_size=100, use_words=False)
         text = parser.extract_pages()
 
-        # Detect chapter titles: lines preceded by 4+ newlines (or at start) and followed by 2+ newlines
+        # Detect chapter titles: preceded by 4+ newlines (or at start)
+        # and followed by 2+ newlines
         # For simplicity, look for the pattern \n\n\n\n{TITLE}\n\n
         import re
 
@@ -134,7 +135,7 @@ class TestPageExtractionImprovements:
         # This tests that at least some deduplication happened
         lines = text.split("\n")
         non_marker_lines = [
-            l.strip() for l in lines if l.strip() and not l.startswith("<<")
+            line.strip() for line in lines if line.strip() and not line.startswith("<<")
         ]
 
         # Should have some content
@@ -249,7 +250,8 @@ class TestPageExtractionImprovements:
         text = parser.extract_pages()
 
         # Find all chapter titles using the new format
-        # Chapter titles are preceded by 4+ newlines (or at start) and followed by 2+ newlines
+        # Chapter titles are preceded by 4+ newlines (or at start) and
+        # followed by 2+ newlines
         import re
 
         chapter_pattern = re.compile(r"(\n{4,}|\A)([^\n]+)\n{2,}")
@@ -295,7 +297,8 @@ class TestPageExtractionImprovements:
                         next_non_empty = lines[j]
                         break
                 if next_non_empty:
-                    # Allow chapter titles or other content between pages, but not another PAGE marker
+                    # Allow chapter titles or other content between pages,
+                    # but not another PAGE marker
                     assert not next_non_empty.startswith("<<PAGE:")
 
     def test_extract_pages_matches_extract_chapters_style(
@@ -309,7 +312,8 @@ class TestPageExtractionImprovements:
         pages_text = parser.extract_pages()
 
         # Both should use chapter titles with the new format
-        # Check for pattern: 4 newlines + title + 2 newlines (or title + 2 newlines for first chapter)
+        # Check for pattern: 4 newlines + title + 2 newlines
+        # (or title + 2 newlines for first chapter)
         import re
 
         chapter_pattern = re.compile(r"(\n{4,}|\A)([^\n]+)\n{2,}")

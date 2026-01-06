@@ -857,7 +857,8 @@ class EPUBParser:
                 else:
                     cleaned_text = chapter.text
 
-                # Format: 4 linebreaks (if not first), chapter title, 2 linebreaks, content
+                # Format: 4 linebreaks (if not first), chapter title,
+                # 2 linebreaks, content
                 if i == 0:
                     # First chapter: no leading linebreaks
                     parts.append(f"{chapter.title}\n\n{cleaned_text}")
@@ -1157,7 +1158,8 @@ class EPUBParser:
             if not chapter.text:
                 continue
 
-            # If chapter changes and we have accumulated content, save current page first
+            # If chapter changes and we have accumulated content, save
+            # current page first
             if (
                 current_chapter_id is not None
                 and (
@@ -1520,7 +1522,6 @@ class EPUBParser:
             page_text = page.text
             if skip_toc:
                 # Check if this is a front matter chapter by title
-                is_front_matter_by_title = False
                 front_matter_keywords = {
                     "INTRODUCTION",
                     "TABLE OF CONTENTS",
@@ -1535,7 +1536,6 @@ class EPUBParser:
                     page.chapter_title
                     and page.chapter_title.upper() in front_matter_keywords
                 ):
-                    is_front_matter_by_title = True
                     # Skip entire page if it's a known front matter chapter
                     continue
 

@@ -167,7 +167,8 @@ def format_sentences(
 
     result_lines: list[str] = []
     for i, para in enumerate(paragraphs):
-        # Check if this is likely a chapter title (short, no sentence-ending punctuation)
+        # Check if this is likely a chapter title
+        # (short, no sentence-ending punctuation)
         is_likely_chapter_title = (
             len(para) < 100
             and not para.rstrip().endswith((".", "!", "?", '"', "'"))
