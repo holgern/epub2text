@@ -16,20 +16,30 @@ Features
 --------
 
 - **Smart Navigation Parsing**: Supports both EPUB3 (NAV HTML) and EPUB2 (NCX) navigation formats
-- **Selective Extraction**: Extract specific chapters by range or interactive selection
+- **Multiple Extraction Modes**:
+  - Chapter-based extraction with selective range support
+  - Page-based extraction (using EPUB page-list or synthetic pages)
+  - Project Gutenberg format output with proper formatting
+- **Interactive Terminal Reader**:
+  - Vim-style navigation (j/k, Space/b, n/p for chapters)
+  - Bookmark support with automatic resume
+  - Adjustable page size and content width
 - **Flexible Output Formatting**:
   - One paragraph per line with customizable separators
   - One sentence per line using spaCy NLP
+  - One clause per line (split at commas, semicolons)
   - Automatic line splitting at clause boundaries for long lines
 - **Smart Text Cleaning**:
   - Remove bracketed footnotes (``[1]``, ``[42]``)
   - Remove page numbers (standalone, at line ends, with dashes)
   - Normalize whitespace and paragraph breaks
   - Preserve ordered lists with proper numbering
+  - Optional front matter/TOC filtering
 - **Rich Interactive UI**: Beautiful terminal output with tables and tree views
 - **Pipe-Friendly**: Works as both CLI tool and Python library
 - **Nested Chapter Support**: Handles hierarchical chapter structures
 - **Full Dublin Core Metadata**: Extract all EPUB metadata fields
+- **URL Support**: Extract text directly from EPUB files hosted online
 
 Quick Start
 -----------
@@ -42,9 +52,21 @@ Extract text from an EPUB file::
 
     epub2text extract book.epub
 
+Extract by pages::
+
+    epub2text extract-pages book.epub
+
 List chapters::
 
     epub2text list book.epub
+
+List pages::
+
+    epub2text pages book.epub
+
+Read interactively::
+
+    epub2text read book.epub
 
 Show metadata::
 

@@ -14,7 +14,7 @@ Optional Dependencies
 ---------------------
 
 - **lxml**: For better HTML parsing performance
-- **spaCy**: For sentence-level formatting and smart line splitting
+- **phrasplit**: For sentence-level and clause-level formatting (depends on spaCy)
 
 Basic Installation
 ------------------
@@ -30,11 +30,11 @@ For better HTML parsing performance::
 
     pip install epub2text[lxml]
 
-For sentence-level formatting (requires spaCy)::
+For sentence-level formatting (requires phrasplit/spaCy)::
 
     pip install epub2text[sentences]
 
-After installing spaCy, download a language model::
+After installing, download a spaCy language model::
 
     python -m spacy download en_core_web_sm
 
