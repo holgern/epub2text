@@ -1,3 +1,8 @@
+[![PyPI - Version](https://img.shields.io/pypi/v/epub2text)](https://pypi.org/project/epub2text/)
+![PyPI - Python Version](https://img.shields.io/pypi/pyversions/epub2text)
+![PyPI - Downloads](https://img.shields.io/pypi/dm/epub2text)
+[![codecov](https://codecov.io/gh/holgern/epub2text/graph/badge.svg?token=iCHXwbjAXG)](https://codecov.io/gh/holgern/epub2text)
+
 # epub2text
 
 A niche CLI tool to extract text from EPUB files with smart cleaning capabilities.
