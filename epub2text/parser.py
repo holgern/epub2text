@@ -17,6 +17,9 @@ from .cleaner import calculate_text_length, clean_text
 from .models import Chapter, Metadata, Page, PageSource
 
 logger = logging.getLogger(__name__)
+_PAGE_LIST_ATTR_PATTERN = re.compile(
+    r"epub:type\s*=\s*['\"]page-list['\"]", re.IGNORECASE
+)
 
 
 class EPUBParser:
@@ -386,50 +389,18 @@ class EPUBParser:
             current_pos = current_entry["position"]
             current_doc_html = self.doc_content.get(current_doc, "")
 
-            start_slice_pos = current_pos
-            slice_html = ""
-
             next_entry = ordered_nav_entries[i + 1] if (i + 1) < num_entries else None
+            next_doc = next_entry["doc_href"] if next_entry else None
+            next_pos = next_entry["position"] if next_entry else None
 
-            if next_entry:
-                next_doc = next_entry["doc_href"]
-                next_pos = next_entry["position"]
-
-                if current_doc == next_doc:
-                    slice_html = current_doc_html[start_slice_pos:next_pos]
-                else:
-                    # Collect content across multiple documents
-                    slice_html = current_doc_html[start_slice_pos:]
-                    docs_between = []
-                    try:
-                        idx_current = spine_docs.index(current_doc)
-                        idx_next = spine_docs.index(next_doc)
-                        if idx_current < idx_next:
-                            for doc_idx in range(idx_current + 1, idx_next):
-                                docs_between.append(spine_docs[doc_idx])
-                        elif idx_current > idx_next:
-                            for doc_idx in range(idx_current + 1, len(spine_docs)):
-                                docs_between.append(spine_docs[doc_idx])
-                            for doc_idx in range(0, idx_next):
-                                docs_between.append(spine_docs[doc_idx])
-                    except ValueError:
-                        # Document not found in spine_docs
-                        pass
-                    for doc_href in docs_between:
-                        slice_html += self.doc_content.get(doc_href, "")
-                    next_doc_html = self.doc_content.get(next_doc, "")
-                    slice_html += next_doc_html[:next_pos]
-            else:
-                # Last entry: include all remaining content
-                slice_html = current_doc_html[start_slice_pos:]
-                try:
-                    idx_current = spine_docs.index(current_doc)
-                    for doc_idx in range(idx_current + 1, len(spine_docs)):
-                        intermediate_doc_href = spine_docs[doc_idx]
-                        slice_html += self.doc_content.get(intermediate_doc_href, "")
-                except ValueError:
-                    # Document not found in spine_docs
-                    pass
+            slice_html = self._slice_spine_html(
+                current_doc,
+                current_pos,
+                next_doc,
+                next_pos,
+                spine_docs,
+                allow_wraparound=True,
+            )
 
             # Fallback: if empty, use whole file
             if not slice_html.strip() and current_doc_html:
@@ -923,16 +894,17 @@ class EPUBParser:
                     nav_content = nav_item.get_content().decode(
                         "utf-8", errors="ignore"
                     )
-                    if 'epub:type="page-list"' in nav_content:
-                        nav_soup = BeautifulSoup(nav_content, "html.parser")
-                        page_list_nav = nav_soup.find(
-                            "nav", attrs={"epub:type": "page-list"}
+                    if not _PAGE_LIST_ATTR_PATTERN.search(nav_content):
+                        continue
+                    nav_soup = BeautifulSoup(nav_content, "html.parser")
+                    page_list_nav = nav_soup.find(
+                        "nav", attrs={"epub:type": "page-list"}
+                    )
+                    if page_list_nav:
+                        logger.info(
+                            f"Found page-list in NAV HTML: {nav_item.get_name()}"
                         )
-                        if page_list_nav:
-                            logger.info(
-                                f"Found page-list in NAV HTML: {nav_item.get_name()}"
-                            )
-                            return (page_list_nav, "html")
+                        return (page_list_nav, "html")
                 except (AttributeError, UnicodeDecodeError):
                     continue
 
@@ -965,12 +937,13 @@ class EPUBParser:
         for item in self.book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
             try:
                 html_content = item.get_content().decode("utf-8", errors="ignore")
-                if 'epub:type="page-list"' in html_content:
-                    soup = BeautifulSoup(html_content, "html.parser")
-                    page_list_nav = soup.find("nav", attrs={"epub:type": "page-list"})
-                    if page_list_nav:
-                        logger.info(f"Found page-list in document: {item.get_name()}")
-                        return (page_list_nav, "html")
+                if not _PAGE_LIST_ATTR_PATTERN.search(html_content):
+                    continue
+                soup = BeautifulSoup(html_content, "html.parser")
+                page_list_nav = soup.find("nav", attrs={"epub:type": "page-list"})
+                if page_list_nav:
+                    logger.info(f"Found page-list in document: {item.get_name()}")
+                    return (page_list_nav, "html")
             except (AttributeError, UnicodeDecodeError):
                 continue
 
@@ -1405,6 +1378,61 @@ class EPUBParser:
 
         return result_id, result_title
 
+    def _get_spine_index(self, doc_href: str, spine_docs: list[str]) -> Optional[int]:
+        """Get the index of a document in the spine, logging if missing."""
+        try:
+            return spine_docs.index(doc_href)
+        except ValueError:
+            logger.warning("Document '%s' not found in spine order", doc_href)
+            return None
+
+    def _slice_spine_html(
+        self,
+        current_doc: str,
+        current_pos: int,
+        next_doc: Optional[str],
+        next_pos: Optional[int],
+        spine_docs: list[str],
+        *,
+        allow_wraparound: bool,
+    ) -> str:
+        """Slice HTML across spine documents between two positions."""
+        current_doc_html = self.doc_content.get(current_doc, "")
+        if not current_doc_html:
+            return ""
+
+        if next_doc is None:
+            slice_html = current_doc_html[current_pos:]
+            idx_current = self._get_spine_index(current_doc, spine_docs)
+            if idx_current is None:
+                return slice_html
+            for doc_idx in range(idx_current + 1, len(spine_docs)):
+                slice_html += self.doc_content.get(spine_docs[doc_idx], "")
+            return slice_html
+
+        if current_doc == next_doc:
+            return current_doc_html[current_pos:next_pos]
+
+        slice_html = current_doc_html[current_pos:]
+        idx_current = self._get_spine_index(current_doc, spine_docs)
+        idx_next = self._get_spine_index(next_doc, spine_docs)
+        if idx_current is None or idx_next is None:
+            return slice_html
+
+        docs_between: list[str] = []
+        if idx_current < idx_next:
+            docs_between = spine_docs[idx_current + 1 : idx_next]
+        elif allow_wraparound and idx_current > idx_next:
+            docs_between = spine_docs[idx_current + 1 :] + spine_docs[:idx_next]
+
+        for doc_href in docs_between:
+            slice_html += self.doc_content.get(doc_href, "")
+
+        next_doc_html = self.doc_content.get(next_doc, "")
+        slice_html += next_doc_html[: next_pos or 0]
+
+        return slice_html
+
     def _extract_text_between_positions(
         self,
         current: dict[str, Any],
@@ -1424,44 +1452,17 @@ class EPUBParser:
         """
         current_doc = current.get("doc_href", "")
         current_pos = current.get("position", 0)
-        current_doc_html = self.doc_content.get(current_doc, "")
+        next_doc = next_entry.get("doc_href", "") if next_entry else None
+        next_pos = next_entry.get("position", 0) if next_entry else None
 
-        if not current_doc_html:
-            return ""
-
-        slice_html = ""
-
-        if next_entry:
-            next_doc = next_entry.get("doc_href", "")
-            next_pos = next_entry.get("position", 0)
-
-            if current_doc == next_doc:
-                slice_html = current_doc_html[current_pos:next_pos]
-            else:
-                # Content spans multiple documents
-                slice_html = current_doc_html[current_pos:]
-
-                try:
-                    idx_current = spine_docs.index(current_doc)
-                    idx_next = spine_docs.index(next_doc)
-
-                    for doc_idx in range(idx_current + 1, idx_next):
-                        slice_html += self.doc_content.get(spine_docs[doc_idx], "")
-
-                    next_doc_html = self.doc_content.get(next_doc, "")
-                    slice_html += next_doc_html[:next_pos]
-                except ValueError:
-                    pass
-        else:
-            # Last page: include all remaining content
-            slice_html = current_doc_html[current_pos:]
-
-            try:
-                idx_current = spine_docs.index(current_doc)
-                for doc_idx in range(idx_current + 1, len(spine_docs)):
-                    slice_html += self.doc_content.get(spine_docs[doc_idx], "")
-            except ValueError:
-                pass
+        slice_html = self._slice_spine_html(
+            current_doc,
+            current_pos,
+            next_doc,
+            next_pos,
+            spine_docs,
+            allow_wraparound=False,
+        )
 
         if not slice_html.strip():
             return ""
@@ -1506,7 +1507,10 @@ class EPUBParser:
         if page_numbers is None:
             selected = pages
         else:
-            selected = [p for p in pages if p.page_number in page_numbers]
+            pages_by_number = {page.page_number: page for page in pages}
+            selected = [
+                pages_by_number[num] for num in page_numbers if num in pages_by_number
+            ]
 
         # Note: We don't filter out entire pages here anymore
         # Instead, we strip TOC content from pages below

@@ -4,6 +4,7 @@ import re
 
 # Pre-compile frequently used regex patterns for better performance
 _BRACKETED_NUMBERS_PATTERN = re.compile(r"\[\s*\d+\s*\]")
+_BRACKETED_PAGE_NUMBERS_PATTERN = re.compile(r"^\s*\[\s*\d+\s*\]\s*$", re.MULTILINE)
 _STANDALONE_PAGE_NUMBERS_PATTERN = re.compile(r"^\s*\d+\s*$", re.MULTILINE)
 _PAGE_NUMBERS_AT_END_PATTERN = re.compile(r"\s+\d+\s*$", re.MULTILINE)
 _PAGE_NUMBERS_WITH_DASH_PATTERN = re.compile(
@@ -108,7 +109,7 @@ class TextCleaner:
 
         # Remove page numbers and footnotes if requested
         if self.remove_page_numbers:
-            text = _BRACKETED_NUMBERS_PATTERN.sub("", text)
+            text = _BRACKETED_PAGE_NUMBERS_PATTERN.sub("", text)
             text = _STANDALONE_PAGE_NUMBERS_PATTERN.sub("", text)
             text = _PAGE_NUMBERS_AT_END_PATTERN.sub("", text)
             text = _PAGE_NUMBERS_WITH_DASH_PATTERN.sub("", text)

@@ -4,6 +4,8 @@ Command-line interface for epub2text.
 
 import re
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
 
@@ -32,6 +34,51 @@ console = Console()
 MAX_DESCRIPTION_LENGTH = 200
 
 
+@contextmanager
+def spinner(task_description: str) -> Iterator[None]:
+    """Show a Rich spinner while performing a task."""
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        progress.add_task(task_description, total=None)
+        yield
+
+
+def parse_range_tokens(range_str: str) -> list[tuple[str, Optional[str]]]:
+    """
+    Parse a range string into ordered tokens.
+
+    Args:
+        range_str: Range string (e.g., "1-5,7,9-12")
+
+    Returns:
+        List of (start, end) tokens where end is None for single values.
+    """
+    if not range_str:
+        raise ValueError("Range string cannot be empty")
+
+    tokens: list[tuple[str, Optional[str]]] = []
+    parts = range_str.split(",")
+
+    for part in parts:
+        part = part.strip()
+        if not part:
+            raise ValueError("Range contains empty value")
+        if "-" in part:
+            start, end = part.split("-", 1)
+            start = start.strip()
+            end = end.strip()
+            if not start or not end:
+                raise ValueError(f"Invalid range segment: '{part}'")
+            tokens.append((start, end))
+        else:
+            tokens.append((part, None))
+
+    return tokens
+
+
 def parse_chapter_range(range_str: str) -> list[int]:
     """
     Parse chapter range string like "1-5,7,9-12" into list of indices.
@@ -40,21 +87,27 @@ def parse_chapter_range(range_str: str) -> list[int]:
         range_str: Range string (e.g., "1-5,7,9-12")
 
     Returns:
-        List of chapter indices (0-based)
+        List of chapter indices (0-based), preserving input order and de-duplicating.
     """
-    indices: set[int] = set()
-    parts = range_str.split(",")
-    for part in parts:
-        part = part.strip()
-        if "-" in part:
-            start, end = part.split("-", 1)
-            start_idx = int(start.strip()) - 1  # Convert to 0-based
-            end_idx = int(end.strip()) - 1
-            indices.update(range(start_idx, end_idx + 1))
-        else:
-            indices.add(int(part) - 1)  # Convert to 0-based
-    # Use sorted() directly on the set instead of converting to list first
-    return sorted(indices)
+    indices: list[int] = []
+    seen: set[int] = set()
+
+    for start, end in parse_range_tokens(range_str):
+        if end is None:
+            idx = int(start) - 1
+            if idx not in seen:
+                indices.append(idx)
+                seen.add(idx)
+            continue
+
+        start_idx = int(start) - 1
+        end_idx = int(end) - 1
+        for idx in range(start_idx, end_idx + 1):
+            if idx not in seen:
+                indices.append(idx)
+                seen.add(idx)
+
+    return indices
 
 
 def display_chapters_tree(chapters: list[Chapter]) -> None:
@@ -141,50 +194,41 @@ def parse_page_range(range_str: str, pages: list[Page]) -> list[str]:
         pages: List of pages for reference
 
     Returns:
-        List of page numbers (as strings)
+        List of page numbers (as strings), preserving input order and de-duplicating.
     """
-    # Build a set of valid page numbers
     valid_page_numbers = {p.page_number for p in pages}
+    result: list[str] = []
+    seen: set[str] = set()
 
-    result: set[str] = set()
-    parts = range_str.split(",")
+    def add_page_number(page_number: str) -> None:
+        if page_number not in seen:
+            result.append(page_number)
+            seen.add(page_number)
 
-    for part in parts:
-        part = part.strip()
-        if "-" in part:
-            start, end = part.split("-", 1)
-            start = start.strip()
-            end = end.strip()
-
-            # Check if these are numeric indices or page numbers
+    for start, end in parse_range_tokens(range_str):
+        if end is None:
             try:
-                start_idx = int(start)
-                end_idx = int(end)
-
-                # Treat as 1-based indices
-                for idx in range(start_idx - 1, end_idx):
-                    if 0 <= idx < len(pages):
-                        result.add(pages[idx].page_number)
-            except ValueError:
-                # Treat as page number range (e.g., "i-v" for roman numerals)
-                # Just add start and end as literal page numbers
-                if start in valid_page_numbers:
-                    result.add(start)
-                if end in valid_page_numbers:
-                    result.add(end)
-        else:
-            # Single value - could be index or page number
-            try:
-                idx = int(part)
-                # Treat as 1-based index
+                idx = int(start)
                 if 0 < idx <= len(pages):
-                    result.add(pages[idx - 1].page_number)
+                    add_page_number(pages[idx - 1].page_number)
             except ValueError:
-                # Treat as literal page number
-                if part in valid_page_numbers:
-                    result.add(part)
+                if start in valid_page_numbers:
+                    add_page_number(start)
+            continue
 
-    return list(result)
+        try:
+            start_idx = int(start)
+            end_idx = int(end)
+            for idx in range(start_idx - 1, end_idx):
+                if 0 <= idx < len(pages):
+                    add_page_number(pages[idx].page_number)
+        except ValueError:
+            if start in valid_page_numbers:
+                add_page_number(start)
+            if end in valid_page_numbers:
+                add_page_number(end)
+
+    return result
 
 
 def interactive_chapter_selection(chapters: list[Chapter]) -> list[str]:
@@ -380,15 +424,9 @@ def generate_table_of_contents(chapters: list["Chapter"]) -> str:
 def list_chapters(filepath: Path, format: str) -> None:
     """List all chapters in an EPUB file."""
     try:
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            progress.add_task(f"Loading {filepath.name}...", total=None)
+        with spinner(f"Loading {filepath.name}..."):
             parser = EPUBParser(str(filepath))
             chapters = parser.get_chapters()
-            progress.stop()
 
         if not chapters:
             console.print("[yellow]No chapters found in EPUB file.[/yellow]")
@@ -432,19 +470,13 @@ def list_pages(filepath: Path, page_size: int, use_words: bool) -> None:
     based on the --page-size option.
     """
     try:
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            progress.add_task(f"Loading {filepath.name}...", total=None)
+        with spinner(f"Loading {filepath.name}..."):
             parser = EPUBParser(str(filepath))
             all_pages = parser.get_pages(
                 synthetic_page_size=page_size,
                 use_words=use_words,
             )
             has_page_list = parser.has_page_list()
-            progress.stop()
 
         if not all_pages:
             console.print("[yellow]No pages found in EPUB file.[/yellow]")
@@ -562,19 +594,13 @@ def extract_pages_cmd(
     """
     try:
         # Load EPUB
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            progress.add_task(f"Loading {filepath.name}...", total=None)
+        with spinner(f"Loading {filepath.name}..."):
             parser = EPUBParser(str(filepath), paragraph_separator="\n\n")
             all_pages = parser.get_pages(
                 synthetic_page_size=page_size,
                 use_words=use_words,
             )
             has_page_list = parser.has_page_list()
-            progress.stop()
 
         if not all_pages:
             console.print("[yellow]No pages found in EPUB file.[/yellow]")
@@ -605,19 +631,13 @@ def extract_pages_cmd(
                 sys.exit(1)
 
         # Extract text with deduplication and TOC options
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            progress.add_task("Extracting pages...", total=None)
+        with spinner("Extracting pages..."):
             text = parser.extract_pages(
                 page_numbers=page_numbers,
                 deduplicate_chapter_titles=not keep_duplicate_titles,
                 # Invert: skip TOC unless --show-front-matter is set
                 skip_toc=not show_front_matter,
             )
-            progress.stop()
 
         # Remove markers if requested
         if no_markers:
@@ -632,14 +652,8 @@ def extract_pages_cmd(
                 remove_page_numbers=True,
                 preserve_single_newlines=False,  # Preserve paragraph breaks (\n\n)
             )
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-            ) as progress:
-                progress.add_task("Cleaning text...", total=None)
+            with spinner("Cleaning text..."):
                 text = cleaner.clean(text)
-                progress.stop()
 
         # Output
         if output:
@@ -781,15 +795,9 @@ def extract(
         effective_separator = "" if empty_lines else separator
 
         # Load EPUB - always use double newlines for paragraph detection
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            progress.add_task(f"Loading {filepath.name}...", total=None)
+        with spinner(f"Loading {filepath.name}..."):
             parser = EPUBParser(str(filepath), paragraph_separator="\n\n")
             all_chapters = parser.get_chapters()
-            progress.stop()
 
         if not all_chapters:
             console.print("[yellow]No chapters found in EPUB file.[/yellow]")
@@ -811,14 +819,8 @@ def extract(
                 sys.exit(1)
 
         # Extract text
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            progress.add_task("Extracting chapters...", total=None)
+        with spinner("Extracting chapters..."):
             text = parser.extract_chapters(chapter_ids)
-            progress.stop()
 
         # Remove chapter markers if requested (do this early)
         if no_markers:
@@ -839,26 +841,15 @@ def extract(
                 remove_page_numbers=not keep_page_numbers,
                 preserve_single_newlines=True,  # Keep structure for formatting
             )
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-            ) as progress:
-                progress.add_task("Cleaning text...", total=None)
+            with spinner("Cleaning text..."):
                 text = cleaner.clean(text)
-                progress.stop()
 
         # Apply formatting based on options
         # When both --sentences and --comma are used, apply sentences first,
         # then clauses (results in more granular splitting with empty line separation)
         if sentences and comma:
             # First split by sentences, then by clauses
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-            ) as progress:
-                progress.add_task("Formatting sentences and clauses...", total=None)
+            with spinner("Formatting sentences and clauses..."):
                 try:
                     text = format_sentences(
                         text,
@@ -874,15 +865,9 @@ def extract(
                 except (ImportError, OSError) as e:
                     console.print(f"[red]Error: {e}[/red]")
                     sys.exit(1)
-                progress.stop()
         elif comma:
             # One clause per line (split at commas, semicolons, etc.)
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-            ) as progress:
-                progress.add_task("Formatting clauses...", total=None)
+            with spinner("Formatting clauses..."):
                 try:
                     text = format_clauses(
                         text,
@@ -892,15 +877,9 @@ def extract(
                 except (ImportError, OSError) as e:
                     console.print(f"[red]Error: {e}[/red]")
                     sys.exit(1)
-                progress.stop()
         elif sentences:
             # One sentence per line
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-            ) as progress:
-                progress.add_task("Formatting sentences...", total=None)
+            with spinner("Formatting sentences..."):
                 try:
                     text = format_sentences(
                         text,
@@ -910,30 +889,18 @@ def extract(
                 except (ImportError, OSError) as e:
                     console.print(f"[red]Error: {e}[/red]")
                     sys.exit(1)
-                progress.stop()
         elif paragraphs or not empty_lines:
             # Format paragraphs with separator
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-            ) as progress:
-                progress.add_task("Formatting paragraphs...", total=None)
+            with spinner("Formatting paragraphs..."):
                 text = format_paragraphs(
                     text,
                     separator=effective_separator,
                     one_line_per_paragraph=paragraphs,
                 )
-                progress.stop()
 
         # Apply max-length splitting if requested
         if max_length is not None:
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-            ) as progress:
-                progress.add_task("Splitting long lines...", total=None)
+            with spinner("Splitting long lines..."):
                 try:
                     text = split_long_lines(
                         text,
@@ -944,7 +911,6 @@ def extract(
                 except (ImportError, OSError) as e:
                     console.print(f"[red]Error: {e}[/red]")
                     sys.exit(1)
-                progress.stop()
 
         # Apply offset and limit to lines
         if offset > 0 or limit is not None or line_numbers:
@@ -1038,16 +1004,10 @@ def extract_gutenberg(
     """
     try:
         # Load EPUB
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            progress.add_task(f"Loading {filepath.name}...", total=None)
+        with spinner(f"Loading {filepath.name}..."):
             parser = EPUBParser(str(filepath), paragraph_separator="\n\n")
             metadata = parser.get_metadata()
             all_chapters = parser.get_chapters()
-            progress.stop()
 
         if not all_chapters:
             console.print("[yellow]No chapters found in EPUB file.[/yellow]")
@@ -1079,15 +1039,9 @@ def extract_gutenberg(
         book_parts = []
 
         # 1. Generate header
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            progress.add_task("Generating header...", total=None)
+        with spinner("Generating header..."):
             header = generate_gutenberg_header(metadata, title)
             book_parts.append(header)
-            progress.stop()
 
         # 2. Add title and author
         book_parts.append(title)
@@ -1118,13 +1072,7 @@ def extract_gutenberg(
         book_parts.append(toc)
 
         # 4. Extract and format chapters
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            progress.add_task("Extracting chapters...", total=None)
-
+        with spinner("Extracting chapters..."):
             # Extract raw chapter text
             chapter_text = parser.extract_chapters(chapter_ids)
 
@@ -1136,16 +1084,8 @@ def extract_gutenberg(
             )
             chapter_text = cleaner.clean(chapter_text)
 
-            progress.stop()
-
         # 5. Split into individual chapters and format each one
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            progress.add_task("Formatting chapters...", total=None)
-
+        with spinner("Formatting chapters..."):
             # Split by new chapter format (4+ newlines, title, 2+ newlines)
             # First, normalize the chapter text to help with splitting
             chapter_lines = chapter_text.split("\n")
@@ -1227,8 +1167,6 @@ def extract_gutenberg(
                     formatted_content = wrap_text_gutenberg(chapter_content, width=72)
                     book_parts.append(formatted_content)
 
-            progress.stop()
-
         # 6. Join all parts
         final_text = "\n".join(book_parts)
 
@@ -1264,17 +1202,11 @@ def extract_gutenberg(
 def info(filepath: Path, format: str) -> None:
     """Display metadata information about an EPUB file."""
     try:
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            progress.add_task(f"Loading {filepath.name}...", total=None)
+        with spinner(f"Loading {filepath.name}..."):
             parser = EPUBParser(str(filepath))
             metadata = parser.get_metadata()
             chapters = parser.get_chapters()
             has_page_list = parser.has_page_list()
-            progress.stop()
 
         # Calculate summary stats
         total_chars = sum(ch.char_count for ch in chapters)
@@ -1502,30 +1434,18 @@ def read(
 
     try:
         # Load EPUB
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            progress.add_task(f"Loading {filepath.name}...", total=None)
+        with spinner(f"Loading {filepath.name}..."):
             parser = EPUBParser(str(filepath), paragraph_separator="\n\n")
             all_chapters = parser.get_chapters()
             metadata = parser.get_metadata()
-            progress.stop()
 
         if not all_chapters:
             console.print("[yellow]No chapters found in EPUB file.[/yellow]")
             return
 
         # Extract text with chapter markers
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            progress.add_task("Extracting chapters...", total=None)
+        with spinner("Extracting chapters..."):
             text = parser.extract_chapters(None)  # All chapters
-            progress.stop()
 
         # Apply cleaning if enabled
         if not raw:
@@ -1534,23 +1454,12 @@ def read(
                 remove_page_numbers=not keep_page_numbers,
                 preserve_single_newlines=True,
             )
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-            ) as progress:
-                progress.add_task("Cleaning text...", total=None)
+            with spinner("Cleaning text..."):
                 text = cleaner.clean(text)
-                progress.stop()
 
         # Apply formatting based on options
         if sentences and comma:
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-            ) as progress:
-                progress.add_task("Formatting sentences and clauses...", total=None)
+            with spinner("Formatting sentences and clauses..."):
                 try:
                     text = format_sentences(
                         text, separator="  ", language_model=language_model
@@ -1561,14 +1470,8 @@ def read(
                 except (ImportError, OSError) as e:
                     console.print(f"[red]Error: {e}[/red]")
                     sys.exit(1)
-                progress.stop()
         elif comma:
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-            ) as progress:
-                progress.add_task("Formatting clauses...", total=None)
+            with spinner("Formatting clauses..."):
                 try:
                     text = format_clauses(
                         text, separator="  ", language_model=language_model
@@ -1576,14 +1479,8 @@ def read(
                 except (ImportError, OSError) as e:
                     console.print(f"[red]Error: {e}[/red]")
                     sys.exit(1)
-                progress.stop()
         elif sentences:
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-            ) as progress:
-                progress.add_task("Formatting sentences...", total=None)
+            with spinner("Formatting sentences..."):
                 try:
                     text = format_sentences(
                         text, separator="  ", language_model=language_model
@@ -1591,30 +1488,17 @@ def read(
                 except (ImportError, OSError) as e:
                     console.print(f"[red]Error: {e}[/red]")
                     sys.exit(1)
-                progress.stop()
         elif paragraphs:
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-            ) as progress:
-                progress.add_task("Formatting paragraphs...", total=None)
+            with spinner("Formatting paragraphs..."):
                 text = format_paragraphs(
                     text, separator="  ", one_line_per_paragraph=True
                 )
-                progress.stop()
         else:
             # Default: format paragraphs with separator
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-            ) as progress:
-                progress.add_task("Formatting paragraphs...", total=None)
+            with spinner("Formatting paragraphs..."):
                 text = format_paragraphs(
                     text, separator="  ", one_line_per_paragraph=False
                 )
-                progress.stop()
 
         # Setup bookmark manager
         bookmark_manager = BookmarkManager(bookmark_file)

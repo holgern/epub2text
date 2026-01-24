@@ -116,7 +116,7 @@ class EpubReader:
             self.current_line = self.chapter_offsets[start_chapter]
 
         # Ensure current_line is valid
-        self.current_line = max(0, min(self.current_line, len(self.lines) - 1))
+        self.current_line = self._clamp_line(self.current_line)
 
         # State
         self._show_help = False
@@ -145,6 +145,11 @@ class EpubReader:
         footer_size = 3 if self.show_footer else 0
         # Account for content panel borders (2 lines: top + bottom)
         return max(5, height - header_size - footer_size - 4)
+
+    def _clamp_line(self, line: int) -> int:
+        """Clamp a line index to the available content range."""
+        max_line = max(0, len(self.lines) - 1)
+        return max(0, min(line, max_line))
 
     def _process_content(self, content: str) -> None:
         """
@@ -245,7 +250,7 @@ class EpubReader:
     def _scroll_lines(self, delta: int) -> None:
         """Scroll by N lines."""
         new_line = self.current_line + delta
-        self.current_line = max(0, min(new_line, len(self.lines) - 1))
+        self.current_line = self._clamp_line(new_line)
 
     def _scroll_page(self, delta: int) -> None:
         """Scroll by N pages."""
@@ -262,7 +267,7 @@ class EpubReader:
 
     def _goto_end(self) -> None:
         """Go to end."""
-        self.current_line = max(0, len(self.lines) - 1)
+        self.current_line = self._clamp_line(len(self.lines) - 1)
 
     def _save_bookmark(self) -> None:
         """Save current position as bookmark."""
@@ -283,7 +288,15 @@ class EpubReader:
         """Load and jump to bookmark."""
         bookmark = self.bookmark_manager.load(self.epub_path)
         if bookmark:
-            self.current_line = min(bookmark.line_offset, len(self.lines) - 1)
+            if not self.lines:
+                self.current_line = 0
+                self._message = (
+                    "Bookmark found but content is empty; starting at beginning"
+                )
+                self._message_style = "yellow"
+                return
+
+            self.current_line = self._clamp_line(bookmark.line_offset)
             self._message = f"Jumped to bookmark ({bookmark.percentage:.1f}%)"
             self._message_style = "green"
         else:
