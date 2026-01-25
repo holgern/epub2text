@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Generator
 from contextlib import contextmanager
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Generator
 
 import pypub  # type: ignore[import-untyped]
 import pytest

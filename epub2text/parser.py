@@ -9,9 +9,9 @@ import urllib.parse
 from pathlib import Path
 from typing import Any, Optional
 
-from defusedxml import ElementTree as DefusedET
 import ebooklib  # type: ignore[import-untyped]
 from bs4 import BeautifulSoup, NavigableString  # type: ignore[import-untyped]
+from defusedxml import ElementTree as DefusedET
 from ebooklib import epub
 
 from .cleaner import calculate_text_length, clean_text
