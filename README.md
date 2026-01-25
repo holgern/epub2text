@@ -485,8 +485,9 @@ Use `--no-markers` to hide chapter titles from the output.
 - rich >= 13.0.0
 - ebooklib >= 0.18
 - beautifulsoup4 >= 4.12.0
+- defusedxml >= 0.7.1
 - lxml >= 4.9.0 (optional, for better HTML parsing performance)
-- phrasplit >= 1.0.0 (optional, for sentence/clause formatting, depends on spaCy)
+- phrasplit >= 0.1.0 (optional, for sentence/clause formatting, depends on spaCy)
 
 ## Technical Details
 

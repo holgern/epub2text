@@ -40,6 +40,19 @@ def _make_parser_with_nav(nav_content: str) -> EPUBParser:
         nav_items=[StubItem("nav.xhtml", nav_content.encode("utf-8"))],
         doc_items=[],
     )
+    parser._page_list_nav = None
+    parser._page_list_nav_checked = False
+    return parser
+
+
+def _make_parser_with_ncx(ncx_content: str) -> EPUBParser:
+    parser = EPUBParser.__new__(EPUBParser)
+    parser.book = StubBook(
+        nav_items=[StubItem("toc.ncx", ncx_content.encode("utf-8"))],
+        doc_items=[],
+    )
+    parser._page_list_nav = None
+    parser._page_list_nav_checked = False
     return parser
 
 
@@ -75,3 +88,24 @@ def test_page_list_nav_whitespace_variation() -> None:
     assert result is not None
     _, nav_type = result
     assert nav_type == "html"
+
+
+def test_page_list_ncx_parsing() -> None:
+    """Detect page-list in NCX format."""
+    ncx_content = """
+    <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/">
+      <pageList>
+        <pageTarget id="p1">
+          <navLabel><text>i</text></navLabel>
+          <content src="chap.xhtml#p1" />
+        </pageTarget>
+      </pageList>
+    </ncx>
+    """
+    parser = _make_parser_with_ncx(ncx_content)
+    result = parser._find_page_list_nav()
+
+    assert result is not None
+    page_list, nav_type = result
+    assert nav_type == "ncx"
+    assert page_list.tag.endswith("pageList")

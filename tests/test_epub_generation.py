@@ -13,18 +13,32 @@ import pypub  # type: ignore[import-untyped]
 import pytest
 
 from epub2text import EPUBParser, epub2txt
+from epub2text.formatters import PHRASPLIT_AVAILABLE
 
-# Check if spaCy is available
+# Check if spaCy language model is available
 try:
-    import spacy  # noqa: F401
+    import spacy  # type: ignore[import-not-found]
 
     SPACY_AVAILABLE = True
+    try:
+        spacy.load("en_core_web_sm")
+        SPACY_MODEL_AVAILABLE = True
+    except OSError:
+        SPACY_MODEL_AVAILABLE = False
 except ImportError:
     SPACY_AVAILABLE = False
+    SPACY_MODEL_AVAILABLE = False
 
-requires_spacy = pytest.mark.skipif(
-    not SPACY_AVAILABLE,
-    reason="spaCy required. Install with: pip install epub2text[sentences]",
+requires_phrasplit = pytest.mark.skipif(
+    not PHRASPLIT_AVAILABLE,
+    reason="phrasplit required. Install with: pip install epub2text[sentences]",
+)
+requires_spacy_model = pytest.mark.skipif(
+    not (PHRASPLIT_AVAILABLE and SPACY_MODEL_AVAILABLE),
+    reason=(
+        "phrasplit + spaCy model required. Install with: pip install "
+        "epub2text[sentences] and python -m spacy download en_core_web_sm"
+    ),
 )
 
 
@@ -942,10 +956,10 @@ class TestMetadataExtraction:
         # pypub doesn't support coverage, so should be None
         assert metadata.coverage is None
 
+    class TestFormatters:
+        """Test text formatting functions."""
 
-class TestFormatters:
-    """Test text formatting functions."""
-
+    @requires_phrasplit
     def test_split_at_clauses_preserves_all_text(self) -> None:
         """Test that _split_at_clauses doesn't lose any text."""
         from phrasplit.splitter import _split_at_clauses
@@ -965,6 +979,7 @@ class TestFormatters:
         assert "Sarah whispered" in joined
         assert "margins" in joined
 
+    @requires_phrasplit
     def test_split_at_clauses_no_trailing_comma(self) -> None:
         """Test that _split_at_clauses doesn't produce lines ending with just comma."""
         from phrasplit.splitter import _split_at_clauses
@@ -983,7 +998,7 @@ class TestFormatters:
             stripped = line.strip()
             assert len(stripped) > 2, f"Line too short: {line}"
 
-    @requires_spacy
+    @requires_spacy_model
     def test_split_long_lines_preserves_text(self) -> None:
         """Test that split_long_lines doesn't lose any text."""
         from epub2text.formatters import split_long_lines
@@ -1002,7 +1017,7 @@ class TestFormatters:
         assert "Sarah" in joined
         assert "margins" in joined
 
-    @requires_spacy
+    @requires_spacy_model
     def test_split_long_lines_respects_max_length(self) -> None:
         """Test that split_long_lines produces lines within max_length."""
         from epub2text.formatters import split_long_lines
@@ -1019,7 +1034,7 @@ class TestFormatters:
             # Allow some tolerance for edge cases
             assert len(line) <= 80, f"Line too long ({len(line)}): {line}"
 
-    @requires_spacy
+    @requires_spacy_model
     def test_format_sentences_preserves_text(self) -> None:
         """Test that format_sentences doesn't lose any text."""
         from epub2text.formatters import format_sentences
@@ -1072,7 +1087,7 @@ Second line of para two."""
         assert "First line of para one. Second line of para one." in lines[0]
         assert "First line of para two. Second line of para two." in lines[1]
 
-    @requires_spacy
+    @requires_spacy_model
     def test_format_sentences_ellipsis_not_sentence_boundary(self) -> None:
         """Test that ellipsis (. . . or ...) does not create sentence boundary."""
         from epub2text.formatters import format_sentences
@@ -1086,7 +1101,7 @@ Second line of para two."""
         assert len(lines) == 1
         assert "thought . . . then" in result or "thought ... then" in result
 
-    @requires_spacy
+    @requires_spacy_model
     def test_format_sentences_ellipsis_three_dots(self) -> None:
         """Test that three dots ellipsis (...) does not create sentence boundary."""
         from epub2text.formatters import format_sentences
@@ -1101,7 +1116,7 @@ Second line of para two."""
         assert "waited" in result
         assert "arrived" in result
 
-    @requires_spacy
+    @requires_spacy_model
     def test_format_clauses_splits_at_comma(self) -> None:
         """Test that format_clauses splits at comma boundaries."""
         from epub2text.formatters import format_clauses
@@ -1115,7 +1130,7 @@ Second line of para two."""
         assert lines[0] == "I do like coffee,"
         assert lines[1] == "and I like wine."
 
-    @requires_spacy
+    @requires_spacy_model
     def test_format_clauses_splits_at_semicolon(self) -> None:
         """Test that format_clauses splits at semicolon boundaries."""
         from epub2text.formatters import format_clauses
@@ -1131,7 +1146,7 @@ Second line of para two."""
         assert len(lines) == 1
         assert lines[0] == "First clause here; second clause follows."
 
-    @requires_spacy
+    @requires_spacy_model
     def test_format_clauses_multiple_sentences(self) -> None:
         """Test format_clauses with multiple sentences containing clauses."""
         from epub2text.formatters import format_clauses
@@ -1148,7 +1163,7 @@ Second line of para two."""
         assert "She likes water," in lines[2]
         assert "and juice." in lines[3]
 
-    @requires_spacy
+    @requires_spacy_model
     def test_format_clauses_preserves_text(self) -> None:
         """Test that format_clauses doesn't lose any text."""
         from epub2text.formatters import format_clauses
@@ -1163,7 +1178,7 @@ Second line of para two."""
         assert "birds sing" in joined
         assert "world awakens" in joined
 
-    @requires_spacy
+    @requires_spacy_model
     def test_format_clauses_with_separator(self) -> None:
         """Test that format_clauses adds separator at paragraph boundaries."""
         from epub2text.formatters import format_clauses
@@ -1180,7 +1195,7 @@ Second paragraph, also with clause."""
         # Second paragraph first clause should have separator
         assert any(line.startswith(">>") for line in lines)
 
-    @requires_spacy
+    @requires_spacy_model
     def test_format_clauses_no_comma_sentence(self) -> None:
         """Test format_clauses with a sentence that has no commas."""
         from epub2text.formatters import format_clauses
@@ -1194,7 +1209,7 @@ Second paragraph, also with clause."""
         assert len(lines) == 1
         assert lines[0] == text
 
-    @requires_spacy
+    @requires_spacy_model
     def test_format_clauses_ellipsis_not_split(self) -> None:
         """Test that ellipsis doesn't cause incorrect splitting in clauses."""
         from epub2text.formatters import format_clauses

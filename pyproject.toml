@@ -21,7 +21,7 @@ dependencies = [
     "rich>=13.0.0",
     "ebooklib>=0.18",
     "beautifulsoup4>=4.12.0",
-    "phrasplit>=0.1.0",
+    "defusedxml>=0.7.1",
 ]
 classifiers=[
     'Intended Audience :: Developers',
@@ -42,6 +42,9 @@ dynamic=["version"]
 [project.optional-dependencies]
 lxml = [
     "lxml>=4.9.0",
+]
+sentences = [
+    "phrasplit>=0.1.0",
 ]
 dev = [
     "pytest>=7.0.0",

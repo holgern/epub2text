@@ -9,6 +9,7 @@ Requirements
 - rich >= 13.0.0
 - ebooklib >= 0.18
 - beautifulsoup4 >= 4.12.0
+- defusedxml >= 0.7.1
 
 Optional Dependencies
 ---------------------

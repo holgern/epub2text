@@ -1,10 +1,16 @@
 """Bookmark management for epub2text reader."""
 
 import json
+import logging
+import os
+import tempfile
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -66,23 +72,62 @@ class BookmarkManager:
 
     def _load(self) -> None:
         """Load bookmarks from file."""
-        if self.bookmark_file.exists():
-            try:
-                with open(self.bookmark_file, encoding="utf-8") as f:
-                    data = json.load(f)
-                    self._bookmarks = data.get("bookmarks", {})
-            except (json.JSONDecodeError, OSError):
-                self._bookmarks = {}
-        else:
-            self._bookmarks = {}
+        self._bookmarks = {}
+        if not self.bookmark_file.exists():
+            return
+
+        data = self._read_bookmarks_file(self.bookmark_file)
+        if data is not None:
+            self._bookmarks = data.get("bookmarks", {})
+            return
+
+        backup_path = self._backup_path()
+        if backup_path.exists():
+            backup_data = self._read_bookmarks_file(backup_path)
+            if backup_data is not None:
+                self._bookmarks = backup_data.get("bookmarks", {})
+                logger.warning("Recovered bookmarks from backup: %s", backup_path)
 
     def _save(self) -> None:
         """Save bookmarks to file."""
         # Ensure directory exists
         self.bookmark_file.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(self.bookmark_file, "w", encoding="utf-8") as f:
-            json.dump({"bookmarks": self._bookmarks}, f, indent=2, ensure_ascii=False)
+        data = {"bookmarks": self._bookmarks}
+        backup_path = self._backup_path()
+        tmp_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                encoding="utf-8",
+                dir=self.bookmark_file.parent,
+                suffix=".tmp",
+                delete=False,
+            ) as tmp:
+                tmp_path = Path(tmp.name)
+                json.dump(data, tmp, indent=2, ensure_ascii=False)
+                tmp.flush()
+                os.fsync(tmp.fileno())
+
+            if self.bookmark_file.exists():
+                self.bookmark_file.replace(backup_path)
+            tmp_path.replace(self.bookmark_file)
+        finally:
+            if tmp_path and tmp_path.exists():
+                tmp_path.unlink(missing_ok=True)
+
+    def _backup_path(self) -> Path:
+        """Return the path for the bookmark backup file."""
+        return self.bookmark_file.with_suffix(self.bookmark_file.suffix + ".bak")
+
+    def _read_bookmarks_file(self, path: Path) -> Optional[dict[str, Any]]:
+        """Read bookmarks JSON from disk."""
+        try:
+            with open(path, encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("Failed to load bookmarks from %s: %s", path, exc)
+            return None
 
     def _normalize_path(self, epub_path: str) -> str:
         """Normalize path for consistent storage."""

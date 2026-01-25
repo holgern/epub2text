@@ -9,6 +9,7 @@ import urllib.parse
 from pathlib import Path
 from typing import Any, Optional
 
+from defusedxml import ElementTree as DefusedET
 import ebooklib  # type: ignore[import-untyped]
 from bs4 import BeautifulSoup, NavigableString  # type: ignore[import-untyped]
 from ebooklib import epub
@@ -54,6 +55,8 @@ class EPUBParser:
         self.content_lengths: dict[str, int] = {}
         self.processed_nav_structure: list[dict[str, Any]] = []
         self._metadata: Optional[Metadata] = None
+        self._page_list_nav: Optional[tuple[Any, str]] = None
+        self._page_list_nav_checked = False
 
         self._load_epub()
 
@@ -754,20 +757,57 @@ class EPUBParser:
         if first_line.lower() == title_clean.lower():
             return lines[1] if len(lines) > 1 else ""
 
+        def join_remainder(remainder: str) -> str:
+            remainder = remainder.lstrip()
+            if len(lines) > 1:
+                if remainder:
+                    return remainder + "\n" + lines[1]
+                return lines[1]
+            return remainder
+
         # 3. First line starts with title followed by space (e.g., "ONE The morning...")
         if first_line.startswith(title_clean + " "):
-            # Remove only the title part, keep the rest
-            remainder = first_line[len(title_clean) :].lstrip()
-            if len(lines) > 1:
-                return remainder + "\n" + lines[1]
-            return remainder
+            remainder = first_line[len(title_clean) :]
+            return join_remainder(remainder)
 
         # 4. Case-insensitive version of #3
         if first_line.lower().startswith(title_clean.lower() + " "):
-            remainder = first_line[len(title_clean) :].lstrip()
-            if len(lines) > 1:
-                return remainder + "\n" + lines[1]
-            return remainder
+            remainder = first_line[len(title_clean) :]
+            return join_remainder(remainder)
+
+        # 5. Title followed by punctuation separators (e.g., "ONE: The morning...")
+        separator_pattern = re.compile(
+            rf"^{re.escape(title_clean)}[\s:\-\.,\u2013\u2014]+(.+)$",
+            flags=re.IGNORECASE,
+        )
+        separator_match = separator_pattern.match(first_line)
+        if separator_match:
+            remainder = separator_match.group(1)
+            return join_remainder(remainder)
+
+        # 6. Normalized matching for heading-like first lines
+        normalized_title = re.sub(r"[^a-z0-9]+", "", title_clean.lower())
+        normalized_first = re.sub(r"[^a-z0-9]+", "", first_line.lower())
+        if normalized_title and normalized_first:
+            if normalized_first == normalized_title:
+                return lines[1] if len(lines) > 1 else ""
+
+            is_heading_like = len(
+                first_line
+            ) <= 120 and not first_line.rstrip().endswith((".", "!", "?"))
+            if is_heading_like and normalized_title in normalized_first:
+                if len(normalized_title) >= 3:
+                    return lines[1] if len(lines) > 1 else ""
+
+                heading_prefixes = (
+                    "chapter",
+                    "part",
+                    "book",
+                    "section",
+                    "act",
+                )
+                if first_line.lower().startswith(heading_prefixes):
+                    return lines[1] if len(lines) > 1 else ""
 
         # No match - return original
         return text
@@ -885,6 +925,9 @@ class EPUBParser:
         Returns:
             Tuple of (nav_soup, nav_type) or None if not found
         """
+        if self._page_list_nav_checked:
+            return self._page_list_nav
+
         # Check ITEM_NAVIGATION for NAV HTML with page-list
         nav_items = list(self.book.get_items_of_type(ebooklib.ITEM_NAVIGATION))
 
@@ -904,7 +947,9 @@ class EPUBParser:
                         logger.info(
                             f"Found page-list in NAV HTML: {nav_item.get_name()}"
                         )
-                        return (page_list_nav, "html")
+                        self._page_list_nav = (page_list_nav, "html")
+                        self._page_list_nav_checked = True
+                        return self._page_list_nav
                 except (AttributeError, UnicodeDecodeError):
                     continue
 
@@ -925,12 +970,14 @@ class EPUBParser:
         if ncx_item:
             try:
                 ncx_content = ncx_item.get_content().decode("utf-8", errors="ignore")
-                ncx_soup = BeautifulSoup(ncx_content, "xml")
-                page_list = ncx_soup.find("pageList")
-                if page_list:
+                ncx_root = DefusedET.fromstring(ncx_content)
+                page_list = ncx_root.find(".//{*}pageList")
+                if page_list is not None:
                     logger.info(f"Found pageList in NCX: {ncx_item.get_name()}")
-                    return (page_list, "ncx")
-            except (AttributeError, UnicodeDecodeError):
+                    self._page_list_nav = (page_list, "ncx")
+                    self._page_list_nav_checked = True
+                    return self._page_list_nav
+            except (DefusedET.ParseError, UnicodeDecodeError, ValueError):
                 pass
 
         # Fallback: search all documents for embedded page-list
@@ -943,10 +990,14 @@ class EPUBParser:
                 page_list_nav = soup.find("nav", attrs={"epub:type": "page-list"})
                 if page_list_nav:
                     logger.info(f"Found page-list in document: {item.get_name()}")
-                    return (page_list_nav, "html")
+                    self._page_list_nav = (page_list_nav, "html")
+                    self._page_list_nav_checked = True
+                    return self._page_list_nav
             except (AttributeError, UnicodeDecodeError):
                 continue
 
+        self._page_list_nav = None
+        self._page_list_nav_checked = True
         return None
 
     def _get_epub_page_list(self) -> list[Page]:
@@ -995,15 +1046,14 @@ class EPUBParser:
                         page_entries.append({"page_number": page_num, "src": src})
         elif nav_type == "ncx":
             # EPUB2 NCX format
-            for page_target in page_list_nav.find_all("pageTarget"):
-                nav_label = page_target.find("navLabel")
-                content = page_target.find("content")
-                if nav_label and content:
-                    text_elem = nav_label.find("text")
-                    page_num = text_elem.get_text(strip=True) if text_elem else ""
-                    src = content.get("src", "")
-                    if page_num and src:
-                        page_entries.append({"page_number": page_num, "src": src})
+            for page_target in page_list_nav.findall(".//{*}pageTarget"):
+                nav_label = page_target.find("{*}navLabel")
+                content = page_target.find("{*}content")
+                text_elem = nav_label.find("{*}text") if nav_label is not None else None
+                page_num = text_elem.text.strip() if text_elem is not None else ""
+                src = content.get("src") if content is not None else ""
+                if page_num and src:
+                    page_entries.append({"page_number": page_num, "src": src})
 
         if not page_entries:
             return []

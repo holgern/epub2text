@@ -108,6 +108,26 @@ class TestTitleDeduplication:
         result = parser._remove_duplicate_title_line(text, "ONE")
         assert result == "The morning was joyless.\nIt was grey."
 
+    def test_remove_duplicate_title_with_punctuation_separator(self) -> None:
+        """Test removal when title is followed by punctuation separators."""
+        parser = EPUBParser.__new__(EPUBParser)
+
+        text = "Chapter 1.\nThe morning was joyless."
+        result = parser._remove_duplicate_title_line(text, "Chapter 1")
+        assert result == "The morning was joyless."
+
+        text = "ONE: The morning was joyless.\nIt was grey."
+        result = parser._remove_duplicate_title_line(text, "ONE")
+        assert result == "The morning was joyless.\nIt was grey."
+
+    def test_remove_duplicate_title_with_leading_chapter_label(self) -> None:
+        """Test removal when title appears after a chapter label."""
+        parser = EPUBParser.__new__(EPUBParser)
+
+        text = "CHAPTER 1 The Morning\nThe morning was joyless."
+        result = parser._remove_duplicate_title_line(text, "The Morning")
+        assert result == "The morning was joyless."
+
     def test_remove_duplicate_title_case_insensitive(self) -> None:
         """Test case-insensitive title matching."""
         parser = EPUBParser.__new__(EPUBParser)

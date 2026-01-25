@@ -102,6 +102,8 @@ def parse_chapter_range(range_str: str) -> list[int]:
 
         start_idx = int(start) - 1
         end_idx = int(end) - 1
+        if start_idx > end_idx:
+            raise ValueError(f"Invalid range: start '{start}' must be <= end '{end}'")
         for idx in range(start_idx, end_idx + 1):
             if idx not in seen:
                 indices.append(idx)
@@ -197,8 +199,17 @@ def parse_page_range(range_str: str, pages: list[Page]) -> list[str]:
         List of page numbers (as strings), preserving input order and de-duplicating.
     """
     valid_page_numbers = {p.page_number for p in pages}
+    numeric_page_numbers = {
+        int(p.page_number) for p in pages if p.page_number.isdigit()
+    }
     result: list[str] = []
     seen: set[str] = set()
+
+    def parse_int(value: str) -> Optional[int]:
+        try:
+            return int(value)
+        except ValueError:
+            return None
 
     def add_page_number(page_number: str) -> None:
         if page_number not in seen:
@@ -207,26 +218,42 @@ def parse_page_range(range_str: str, pages: list[Page]) -> list[str]:
 
     for start, end in parse_range_tokens(range_str):
         if end is None:
-            try:
-                idx = int(start)
-                if 0 < idx <= len(pages):
-                    add_page_number(pages[idx - 1].page_number)
-            except ValueError:
-                if start in valid_page_numbers:
-                    add_page_number(start)
-            continue
-
-        try:
-            start_idx = int(start)
-            end_idx = int(end)
-            for idx in range(start_idx - 1, end_idx):
-                if 0 <= idx < len(pages):
-                    add_page_number(pages[idx].page_number)
-        except ValueError:
             if start in valid_page_numbers:
                 add_page_number(start)
-            if end in valid_page_numbers:
-                add_page_number(end)
+                continue
+
+            idx = parse_int(start)
+            if idx is not None and 0 < idx <= len(pages):
+                add_page_number(pages[idx - 1].page_number)
+            continue
+
+        start_idx = parse_int(start)
+        end_idx = parse_int(end)
+        if start_idx is not None and end_idx is not None:
+            if start_idx > end_idx:
+                raise ValueError(
+                    f"Invalid range: start '{start}' must be <= end '{end}'"
+                )
+            literal_matches = False
+            if numeric_page_numbers:
+                for page in pages:
+                    page_num = parse_int(page.page_number)
+                    if page_num is None:
+                        continue
+                    if start_idx <= page_num <= end_idx:
+                        add_page_number(page.page_number)
+                        literal_matches = True
+
+            if not literal_matches:
+                for idx in range(start_idx - 1, end_idx):
+                    if 0 <= idx < len(pages):
+                        add_page_number(pages[idx].page_number)
+            continue
+
+        if start in valid_page_numbers:
+            add_page_number(start)
+        if end in valid_page_numbers:
+            add_page_number(end)
 
     return result
 
@@ -476,7 +503,9 @@ def list_pages(filepath: Path, page_size: int, use_words: bool) -> None:
                 synthetic_page_size=page_size,
                 use_words=use_words,
             )
-            has_page_list = parser.has_page_list()
+            has_page_list = any(
+                page.source == PageSource.EPUB_PAGE_LIST for page in all_pages
+            )
 
         if not all_pages:
             console.print("[yellow]No pages found in EPUB file.[/yellow]")
@@ -525,7 +554,10 @@ def list_pages(filepath: Path, page_size: int, use_words: bool) -> None:
     "--pages",
     "-p",
     type=str,
-    help="Page range (e.g., '1-5,7,9-12') - uses 1-based indices",
+    help=(
+        "Page range (e.g., '1-5,7,9-12'); prefers literal page numbers "
+        "when available, otherwise uses 1-based indices"
+    ),
 )
 @click.option(
     "--page-size",
@@ -600,7 +632,9 @@ def extract_pages_cmd(
                 synthetic_page_size=page_size,
                 use_words=use_words,
             )
-            has_page_list = parser.has_page_list()
+            has_page_list = any(
+                page.source == PageSource.EPUB_PAGE_LIST for page in all_pages
+            )
 
         if not all_pages:
             console.print("[yellow]No pages found in EPUB file.[/yellow]")
