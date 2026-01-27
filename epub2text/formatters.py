@@ -1,70 +1,15 @@
 """Text formatting utilities for different output styles."""
 
 import re
-from typing import Callable, Optional
 
-# Type aliases for phrasplit functions
-_SplitFunc = Callable[[str, str], list[str]]
-_SplitLongLinesFunc = Callable[[str, int, str], list[str]]
-
-# Try to import phrasplit, fall back to None when not available
-PHRASPLIT_AVAILABLE: bool
-phrasplit_clauses: Optional[_SplitFunc]
-phrasplit_long_lines: Optional[_SplitLongLinesFunc]
-phrasplit_paragraphs: Optional[Callable[[str], list[str]]]
-phrasplit_sentences: Optional[_SplitFunc]
-
-try:
-    from phrasplit import (  # type: ignore[import-not-found]
-        split_clauses as _phrasplit_clauses,
-    )
-    from phrasplit import (
-        split_long_lines as _phrasplit_long_lines,
-    )
-    from phrasplit import (
-        split_paragraphs as _phrasplit_paragraphs,
-    )
-    from phrasplit import (
-        split_sentences as _phrasplit_sentences,
-    )
-
-    PHRASPLIT_AVAILABLE = True
-    phrasplit_clauses = _phrasplit_clauses
-    phrasplit_long_lines = _phrasplit_long_lines
-    phrasplit_paragraphs = _phrasplit_paragraphs
-    phrasplit_sentences = _phrasplit_sentences
-except ImportError:
-    PHRASPLIT_AVAILABLE = False
-    phrasplit_clauses = None
-    phrasplit_long_lines = None
-    phrasplit_paragraphs = None
-    phrasplit_sentences = None
-
-
-def _check_phrasplit() -> None:
-    """Check if phrasplit is available, raise ImportError if not."""
-    if not PHRASPLIT_AVAILABLE:
-        raise ImportError(
-            "phrasplit is required for this feature. "
-            "Install with: pip install epub2text[sentences]"
-        )
-
-
-def split_paragraphs(text: str) -> list[str]:
-    """
-    Split text into paragraphs (separated by double newlines).
-
-    This function works without phrasplit by using a simple regex split.
-
-    Args:
-        text: Input text
-
-    Returns:
-        List of paragraphs (non-empty, stripped)
-    """
-    # Simple implementation that doesn't require phrasplit
-    paragraphs = re.split(r"\n\s*\n", text)
-    return [p.strip() for p in paragraphs if p.strip()]
+from phrasplit import (
+    split_clauses,
+    split_paragraphs,
+    split_sentences,
+)
+from phrasplit import (
+    split_long_lines as _phrasplit_split_long_lines,
+)
 
 
 def collapse_paragraph(paragraph: str) -> str:
@@ -146,8 +91,6 @@ def format_sentences(
     """
     Format text with one sentence per line.
 
-    Requires phrasplit to be installed.
-
     Args:
         text: Input text with paragraph breaks
         separator: String to prepend at paragraph boundaries (default: "  ")
@@ -157,9 +100,6 @@ def format_sentences(
         Text with one sentence per line, separator at paragraph boundaries.
         Chapter titles are preserved.
     """
-    _check_phrasplit()
-    assert phrasplit_sentences is not None
-
     paragraphs = split_paragraphs(text)
 
     if not paragraphs:
@@ -180,7 +120,7 @@ def format_sentences(
             continue
 
         # Process paragraph into sentences using phrasplit
-        sentences = phrasplit_sentences(para, language_model)
+        sentences = split_sentences(para, language_model)
 
         if not sentences:
             continue
@@ -224,8 +164,6 @@ def format_clauses(
             "I do like coffee,
             and I like wine."
     """
-    _check_phrasplit()
-    assert phrasplit_clauses is not None
 
     paragraphs = split_paragraphs(text)
 
@@ -246,7 +184,7 @@ def format_clauses(
             continue
 
         # Process paragraph into clauses using phrasplit
-        clauses = phrasplit_clauses(para, language_model)
+        clauses = split_clauses(para, language_model)
 
         if not clauses:
             continue
@@ -277,8 +215,6 @@ def split_long_lines(
     2. If still too long, split at clause boundaries (commas, semicolons, etc.)
     3. If still too long, split at word boundaries
 
-    Requires phrasplit to be installed.
-
     Args:
         text: Input text (may already be formatted)
         max_length: Maximum line length in characters
@@ -288,9 +224,6 @@ def split_long_lines(
     Returns:
         Text with long lines split. Chapter titles are preserved.
     """
-    _check_phrasplit()
-    assert phrasplit_long_lines is not None
-
     lines = text.split("\n")
     result_lines: list[str] = []
 
@@ -315,9 +248,13 @@ def split_long_lines(
         has_separator = line.startswith(separator) if separator else False
         content = line[len(separator) :] if has_separator else line
 
-        # Split the long line using phrasplit
-        split_lines_list = phrasplit_long_lines(content, max_length, language_model)
-
+        # Split the long line using phrasplit (avoid calling ourselves)
+        split_lines_list = _phrasplit_split_long_lines(
+            content, max_length, language_model
+        )
+        # Defensive: if upstream ever returns a string, normalize to list
+        if isinstance(split_lines_list, str):
+            split_lines_list = [split_lines_list]
         # Add separator to first line if original had it
         for k, split_line in enumerate(split_lines_list):
             if k == 0 and has_separator:
@@ -328,32 +265,11 @@ def split_long_lines(
     return "\n".join(result_lines)
 
 
-# Keep backward compatibility alias
-def format_as_sentences(text: str, language_model: str = "en_core_web_sm") -> str:
-    """
-    Format text with one sentence per line using spaCy.
-
-    Deprecated: Use format_sentences() instead.
-
-    Requires phrasplit to be installed.
-
-    Args:
-        text: Input text with paragraph breaks
-        language_model: spaCy language model to use (default: "en_core_web_sm")
-
-    Returns:
-        Text with sentences separated by newlines
-    """
-    return format_sentences(text, separator="", language_model=language_model)
-
-
 __all__ = [
-    "PHRASPLIT_AVAILABLE",
     "collapse_paragraph",
     "format_paragraphs",
     "format_sentences",
     "format_clauses",
     "split_long_lines",
-    "format_as_sentences",
     "split_paragraphs",
 ]

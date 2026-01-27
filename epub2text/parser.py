@@ -57,8 +57,24 @@ class EPUBParser:
         self._metadata: Optional[Metadata] = None
         self._page_list_nav: Optional[tuple[Any, str]] = None
         self._page_list_nav_checked = False
+        self._nav_processed = False
+        self._upper_title_cache: Optional[set[str]] = None
 
         self._load_epub()
+
+    def _get_upper_titles_for_toc(self) -> set[str]:
+        if self._upper_title_cache is not None:
+            return self._upper_title_cache
+        titles: set[str] = set()
+        meta = self.get_metadata()
+        if meta.title:
+            titles.add(meta.title.upper())
+        # IMPORTANT: no chapter text allocation here
+        for ch in self.get_chapters(include_text=False):
+            if ch.title:
+                titles.add(ch.title.upper())
+        self._upper_title_cache = titles
+        return titles
 
     def _load_epub(self) -> None:
         """Load and parse the EPUB file."""
@@ -133,7 +149,8 @@ class EPUBParser:
         """
         # First, process the navigation structure
         self._process_epub_content_nav()
-
+        if not self._nav_processed:
+            self._process_epub_content_nav()
         # Convert the navigation structure to Chapter objects
         chapters: list[Chapter] = []
         self._build_chapters_from_nav(
@@ -201,6 +218,8 @@ class EPUBParser:
         Process EPUB content using ITEM_NAVIGATION (NAV HTML) or ITEM_NCX.
         Globally orders navigation entries and slices content between them.
         """
+        if self._nav_processed:
+            return
         logger.info("Processing EPUB using navigation document (NAV/NCX)...")
         nav_item = None
         nav_type = None
@@ -483,6 +502,8 @@ class EPUBParser:
                     logger.info("Added prefix content chapter")
 
         logger.info(f"Finished processing. Found {len(self.content_texts)} sections")
+        self._nav_processed = True
+        self._upper_title_cache = None  # invalidate if reprocessed for any reason
 
     def _find_doc_key(
         self,
@@ -817,6 +838,7 @@ class EPUBParser:
         chapter_ids: Optional[list[str]] = None,
         deduplicate_chapter_titles: bool = True,
         skip_toc: bool = False,
+        include_chapter_title: bool = False,
     ) -> str:
         """
         Extract text from selected chapters.
@@ -826,6 +848,8 @@ class EPUBParser:
             deduplicate_chapter_titles: If True, removes duplicate chapter titles
                 that appear as the first line of chapter content (default: True)
             skip_toc: If True, skip TOC and front matter chapters (default: False)
+            include_chapter_title: If True, includes chapter titles in the output
+                (default: False)
 
         Returns:
             Combined text from all selected chapters with chapter titles separated
@@ -870,12 +894,14 @@ class EPUBParser:
 
                 # Format: 4 linebreaks (if not first), chapter title,
                 # 2 linebreaks, content
-                if i == 0:
+                if i == 0 and include_chapter_title:
                     # First chapter: no leading linebreaks
                     parts.append(f"{chapter.title}\n\n{cleaned_text}")
-                else:
+                elif i > 0 and include_chapter_title:
                     # Subsequent chapters: 4 linebreaks before title
                     parts.append(f"\n\n\n\n{chapter.title}\n\n{cleaned_text}")
+                else:
+                    parts.append(cleaned_text)
 
         return "".join(parts)
 
@@ -1242,9 +1268,16 @@ class EPUBParser:
 
         return pages
 
-    def _split_into_sentences(self, text: str) -> list[str]:
+    def _split_into_sentences(
+        self,
+        text: str,
+        language_model: str = "en_core_web_sm",
+        apply_corrections: bool = True,
+        split_on_colon: bool = True,
+        use_spacy: bool = False,
+    ) -> list[str]:
         """
-        Split text into sentences using regex, preserving paragraph breaks.
+        Split text into sentences, preserving paragraph breaks.
 
         Handles common abbreviations and edge cases to avoid incorrect splits.
         Paragraph breaks (\\n\\n) are preserved within the sentence list.
@@ -1258,106 +1291,26 @@ class EPUBParser:
         if not text or not text.strip():
             return []
 
-        sentences: list[str] = []
+        from phrasplit import split_paragraphs, split_sentences
 
-        # Split by paragraphs first to preserve structure
-        paragraphs = text.split("\n\n")
+        sentences: list[str] = []
+        paragraphs = split_paragraphs(text)
 
         for para_idx, paragraph in enumerate(paragraphs):
             if not paragraph.strip():
                 continue
 
-            # Normalize whitespace within paragraph (but not between paragraphs)
-            paragraph = re.sub(r"[ \t]+", " ", paragraph)
-            paragraph = paragraph.replace("\n", " ")
-
-            # Common abbreviations that shouldn't end sentences
-            abbreviations = {
-                "Mr",
-                "Mrs",
-                "Ms",
-                "Dr",
-                "Prof",
-                "Sr",
-                "Jr",
-                "vs",
-                "etc",
-                "Inc",
-                "Ltd",
-                "Corp",
-                "Co",
-                "St",
-                "Ave",
-                "Blvd",
-                "Rd",
-                "Fig",
-                "No",
-                "Vol",
-                "pp",
-                "Jan",
-                "Feb",
-                "Mar",
-                "Apr",
-                "Jun",
-                "Jul",
-                "Aug",
-                "Sep",
-                "Oct",
-                "Nov",
-                "Dec",
-                "e.g",
-                "i.e",
-            }
-
-            current_sentence: list[str] = []
-
-            # Split by whitespace and process word by word
-            words = paragraph.split()
-
-            for i, word in enumerate(words):
-                current_sentence.append(word)
-
-                # Check if this word ends a sentence
-                if word and word[-1] in ".!?":
-                    # Check if it's an abbreviation
-                    word_without_punct = word.rstrip(".!?")
-                    is_abbreviation = word_without_punct in abbreviations
-
-                    # Check for ellipsis (... or . . .)
-                    is_ellipsis = word == "..." or (
-                        word == "."
-                        and i >= 2
-                        and words[i - 1] == "."
-                        and words[i - 2] == "."
-                    )
-
-                    # Check if next word starts with capital (if exists)
-                    next_word_capital = False
-                    if i + 1 < len(words):
-                        next_word = words[i + 1]
-                        if next_word and next_word[0].isupper():
-                            next_word_capital = True
-
-                    # End sentence if:
-                    # - Not an abbreviation
-                    # - Not an ellipsis
-                    # - Either at end of text or next word starts with capital
-                    if (
-                        not is_abbreviation
-                        and not is_ellipsis
-                        and (i + 1 >= len(words) or next_word_capital)
-                    ):
-                        sentence = " ".join(current_sentence)
-                        if sentence.strip():
-                            sentences.append(sentence.strip())
-                        current_sentence = []
-
-            # Add any remaining text as final sentence
-            if current_sentence:
-                sentence = " ".join(current_sentence)
-                if sentence.strip():
-                    sentences.append(sentence.strip())
-
+            para_sentences = split_sentences(
+                paragraph,
+                language_model=language_model,
+                apply_corrections=apply_corrections,
+                split_on_colon=split_on_colon,
+                use_spacy=use_spacy,
+            )
+            for sent in para_sentences:
+                sent = sent.strip()
+                if sent:
+                    sentences.append(sent)
             # Add paragraph break marker after each paragraph (except the last)
             if para_idx < len(paragraphs) - 1:
                 sentences.append("\n\n")  # Paragraph break marker
@@ -1665,20 +1618,7 @@ class EPUBParser:
         if page.chapter_title and page.chapter_title.upper() in front_matter_keywords:
             return True
 
-        # Build list of terms to look for in TOC
-        search_terms = []
-
-        # Add book title
-        metadata = self.get_metadata()
-        if metadata.title:
-            search_terms.append(metadata.title.upper())
-
-        # Add all chapter titles
-        chapters = self.get_chapters()
-        for chapter in chapters:
-            if chapter.title:
-                search_terms.append(chapter.title.upper())
-
+        search_terms = list(self._get_upper_titles_for_toc())
         if not search_terms:
             return False
 
@@ -1716,9 +1656,7 @@ class EPUBParser:
             return page_text
 
         # Build list of chapter titles to detect TOC
-        chapters = self.get_chapters()
-        chapter_titles = {ch.title.upper() for ch in chapters if ch.title}
-
+        chapter_titles = self._get_upper_titles_for_toc()
         if not chapter_titles:
             return page_text
 

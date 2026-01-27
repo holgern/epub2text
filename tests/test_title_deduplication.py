@@ -211,7 +211,9 @@ class TestTitleDeduplication:
         parser = EPUBParser(str(epub_with_duplicate_titles))
 
         # Extract with deduplication (default)
-        text = parser.extract_chapters(deduplicate_chapter_titles=True)
+        text = parser.extract_chapters(
+            deduplicate_chapter_titles=True, include_chapter_title=True
+        )
 
         # Chapter should have title in new format (preceded by 4 newlines
         # or at start, followed by 2 newlines)

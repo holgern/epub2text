@@ -147,8 +147,6 @@ class TextCleaner:
     def apply_gutenberg_spacing(self, text: str) -> str:
         """Apply Gutenberg Project formatting: two spaces after sentences and colons.
 
-        Uses phrasplit for accurate sentence boundary detection.
-
         Args:
             text: Text to format
 

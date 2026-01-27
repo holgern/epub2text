@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import threading
 import time
 from collections.abc import Generator
@@ -43,8 +44,12 @@ def serve_directory(
         host, port = server.server_address[:2]
         yield f"http://{host}:{port}"
     finally:
-        server.shutdown()
-        thread.join()
+        # Stop the loop, then close the listening socket to avoid FD/memory growth
+        with contextlib.suppress(Exception):
+            server.shutdown()
+        thread.join(timeout=5)
+        with contextlib.suppress(Exception):
+            server.server_close()
 
 
 def _create_epub(epub_path: Path) -> None:

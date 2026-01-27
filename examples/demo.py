@@ -30,7 +30,6 @@ from epub2text import (
     epub2txt,
 )
 from epub2text.formatters import (
-    PHRASPLIT_AVAILABLE,
     collapse_paragraph,
     format_clauses,
     format_paragraphs,
@@ -549,11 +548,6 @@ def example_formatters_sentences() -> None:
     print("EXAMPLE: Sentence Formatting")
     print("=" * 60)
 
-    if not PHRASPLIT_AVAILABLE:
-        print("\nNote: Install phrasplit for sentence formatting:")
-        print("  pip install epub2text[sentences]")
-        return
-
     text = """Dr. Smith went to Washington D.C. for a meeting. She arrived
 at 3 p.m. and stayed until evening. The conference was very productive.
 
@@ -579,11 +573,6 @@ def example_formatters_clauses() -> None:
     print("EXAMPLE: Clause Formatting")
     print("=" * 60)
 
-    if not PHRASPLIT_AVAILABLE:
-        print("\nNote: Install phrasplit for clause formatting:")
-        print("  pip install epub2text[sentences]")
-        return
-
     text = """When the sun rises, the birds begin to sing, and the world slowly awakens.
 
 Complex sentences, like this one, benefit from clause splitting,
@@ -608,11 +597,6 @@ def example_formatters_long_lines() -> None:
     print("\n" + "=" * 60)
     print("EXAMPLE: Long Line Splitting")
     print("=" * 60)
-
-    if not PHRASPLIT_AVAILABLE:
-        print("\nNote: Install phrasplit for long line splitting:")
-        print("  pip install epub2text[sentences]")
-        return
 
     long_text = (
         "This is an extremely long line that contains multiple sentences "

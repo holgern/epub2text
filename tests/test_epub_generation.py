@@ -13,7 +13,6 @@ import pypub  # type: ignore[import-untyped]
 import pytest
 
 from epub2text import EPUBParser, epub2txt
-from epub2text.formatters import PHRASPLIT_AVAILABLE
 
 # Check if spaCy language model is available
 try:
@@ -29,12 +28,8 @@ except ImportError:
     SPACY_AVAILABLE = False
     SPACY_MODEL_AVAILABLE = False
 
-requires_phrasplit = pytest.mark.skipif(
-    not PHRASPLIT_AVAILABLE,
-    reason="phrasplit required. Install with: pip install epub2text[sentences]",
-)
 requires_spacy_model = pytest.mark.skipif(
-    not (PHRASPLIT_AVAILABLE and SPACY_MODEL_AVAILABLE),
+    not SPACY_MODEL_AVAILABLE,
     reason=(
         "phrasplit + spaCy model required. Install with: pip install "
         "epub2text[sentences] and python -m spacy download en_core_web_sm"
@@ -959,17 +954,16 @@ class TestMetadataExtraction:
     class TestFormatters:
         """Test text formatting functions."""
 
-    @requires_phrasplit
     def test_split_at_clauses_preserves_all_text(self) -> None:
         """Test that _split_at_clauses doesn't lose any text."""
-        from phrasplit.splitter import _split_at_clauses
+        from phrasplit import split_clauses
 
         text = (
             "When the professor picked up the ancient manuscript for the "
             "ninth time, Sarah whispered, 'You will find the answer in the margins.'"
         )
 
-        result = _split_at_clauses(text, max_length=80)
+        result = split_clauses(text)
         joined = " ".join(result)
 
         # All words from original should be in result
@@ -979,17 +973,16 @@ class TestMetadataExtraction:
         assert "Sarah whispered" in joined
         assert "margins" in joined
 
-    @requires_phrasplit
     def test_split_at_clauses_no_trailing_comma(self) -> None:
         """Test that _split_at_clauses doesn't produce lines ending with just comma."""
-        from phrasplit.splitter import _split_at_clauses
+        from phrasplit import split_clauses
 
         text = (
             "When the professor picked up the ancient manuscript for the "
             "ninth time, Sarah whispered, 'You will find the answer in the margins.'"
         )
 
-        result = _split_at_clauses(text, max_length=80)
+        result = split_clauses(text)
 
         # No line should end with just a comma (indicates lost text)
         for line in result:

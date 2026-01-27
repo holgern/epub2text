@@ -31,10 +31,6 @@ For better HTML parsing performance::
 
     pip install epub2text[lxml]
 
-For sentence-level formatting (requires phrasplit/spaCy)::
-
-    pip install epub2text[sentences]
-
 After installing, download a spaCy language model::
 
     python -m spacy download en_core_web_sm
