@@ -7,7 +7,7 @@ import tempfile
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ class Bookmark:
 class BookmarkManager:
     """Manages bookmarks for EPUB files."""
 
-    def __init__(self, bookmark_file: Optional[Path] = None) -> None:
+    def __init__(self, bookmark_file: Path | None = None) -> None:
         """
         Initialize bookmark manager.
 
@@ -119,11 +119,15 @@ class BookmarkManager:
         """Return the path for the bookmark backup file."""
         return self.bookmark_file.with_suffix(self.bookmark_file.suffix + ".bak")
 
-    def _read_bookmarks_file(self, path: Path) -> Optional[dict[str, Any]]:
+    def _read_bookmarks_file(self, path: Path) -> dict[str, Any] | None:
         """Read bookmarks JSON from disk."""
         try:
             with open(path, encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+            if isinstance(data, dict):
+                return cast(dict[str, Any], data)
+            logger.warning("Unexpected bookmark data structure in %s", path)
+            return None
         except (json.JSONDecodeError, OSError) as exc:
             logger.warning("Failed to load bookmarks from %s: %s", path, exc)
             return None
@@ -144,7 +148,7 @@ class BookmarkManager:
         self._bookmarks[key] = asdict(bookmark)
         self._save()
 
-    def load(self, epub_path: str) -> Optional[Bookmark]:
+    def load(self, epub_path: str) -> Bookmark | None:
         """
         Load bookmark for a specific EPUB file.
 

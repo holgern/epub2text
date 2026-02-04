@@ -136,7 +136,7 @@ def _download_epub(
     except Exception as exc:
         if tmp_path:
             Path(tmp_path).unlink(missing_ok=True)
-        if isinstance(exc, (urllib.error.URLError, socket.timeout)):
+        if isinstance(exc, urllib.error.URLError | socket.timeout):
             if isinstance(exc, socket.timeout) or isinstance(
                 getattr(exc, "reason", None), socket.timeout
             ):
@@ -152,7 +152,7 @@ def epub2txt(
     max_bytes: int = DEFAULT_MAX_DOWNLOAD_BYTES,
     user_agent: str | None = None,
     allowed_schemes: tuple[str, ...] = ("https", "http"),
-) -> Union[str, list[str]]:
+) -> str | list[str]:
     """
     Extract text from EPUB file (compatibility function for old epub2txt API).
 

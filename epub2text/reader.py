@@ -3,7 +3,6 @@
 import signal
 import sys
 from dataclasses import dataclass
-from typing import Optional
 
 import click
 from rich.align import Align
@@ -71,13 +70,13 @@ class EpubReader:
         chapters: list[Chapter],
         title: str,
         epub_path: str,
-        page_size: Optional[int] = None,
+        page_size: int | None = None,
         show_header: bool = True,
         show_footer: bool = True,
         start_line: int = 0,
-        start_chapter: Optional[int] = None,
-        bookmark_manager: Optional[BookmarkManager] = None,
-        width: Optional[int] = None,
+        start_chapter: int | None = None,
+        bookmark_manager: BookmarkManager | None = None,
+        width: int | None = None,
     ) -> None:
         """
         Initialize the EPUB reader.
@@ -120,7 +119,7 @@ class EpubReader:
 
         # State
         self._show_help = False
-        self._message: Optional[str] = None
+        self._message: str | None = None
         self._message_style: str = "green"
         self._running = False
 
@@ -402,7 +401,7 @@ class EpubReader:
 
         return True
 
-    def _get_effective_width(self) -> Optional[int]:
+    def _get_effective_width(self) -> int | None:
         """Get effective content width, capped by terminal width."""
         if self._width is None:
             return None

@@ -7,7 +7,6 @@ import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Optional
 
 import click
 from rich.console import Console
@@ -46,7 +45,7 @@ def spinner(task_description: str) -> Iterator[None]:
         yield
 
 
-def parse_range_tokens(range_str: str) -> list[tuple[str, Optional[str]]]:
+def parse_range_tokens(range_str: str) -> list[tuple[str, str | None]]:
     """
     Parse a range string into ordered tokens.
 
@@ -59,7 +58,7 @@ def parse_range_tokens(range_str: str) -> list[tuple[str, Optional[str]]]:
     if not range_str:
         raise ValueError("Range string cannot be empty")
 
-    tokens: list[tuple[str, Optional[str]]] = []
+    tokens: list[tuple[str, str | None]] = []
     parts = range_str.split(",")
 
     for part in parts:
@@ -205,7 +204,7 @@ def parse_page_range(range_str: str, pages: list[Page]) -> list[str]:
     result: list[str] = []
     seen: set[str] = set()
 
-    def parse_int(value: str) -> Optional[int]:
+    def parse_int(value: str) -> int | None:
         try:
             return int(value)
         except ValueError:
@@ -590,8 +589,8 @@ def list_pages(filepath: Path, page_size: int, use_words: bool) -> None:
 )
 def extract_pages_cmd(
     filepath: Path,
-    output: Optional[Path],
-    pages: Optional[str],
+    output: Path | None,
+    pages: str | None,
     page_size: int,
     use_words: bool,
     raw: bool,
@@ -786,13 +785,13 @@ def extract_pages_cmd(
 )
 def extract(
     filepath: Path,
-    output: Optional[Path],
-    chapters: Optional[str],
+    output: Path | None,
+    chapters: str | None,
     interactive: bool,
     paragraphs: bool,
     sentences: bool,
     comma: bool,
-    max_length: Optional[int],
+    max_length: int | None,
     empty_lines: bool,
     separator: str,
     raw: bool,
@@ -801,7 +800,7 @@ def extract(
     no_markers: bool,
     language_model: str,
     offset: int,
-    limit: Optional[int],
+    limit: int | None,
     line_numbers: bool,
 ) -> None:
     """
@@ -1012,8 +1011,8 @@ def extract(
 )
 def extract_gutenberg(
     filepath: Path,
-    output: Optional[Path],
-    chapters: Optional[str],
+    output: Path | None,
+    chapters: str | None,
     interactive: bool,
 ) -> None:
     """
@@ -1124,9 +1123,9 @@ def extract_gutenberg(
             # First, normalize the chapter text to help with splitting
             chapter_lines = chapter_text.split("\n")
 
-            current_title = None
-            current_content = []
-            chapters_list = []
+            current_title: str | None = None
+            current_content: list[str] = []
+            chapters_list: list[tuple[str, str]] = []
 
             i = 0
             while i < len(chapter_lines):
@@ -1418,11 +1417,11 @@ def info(filepath: Path, format: str) -> None:
 )
 def read(
     filepath: Path,
-    chapter: Optional[int],
-    line: Optional[int],
+    chapter: int | None,
+    line: int | None,
     resume: bool,
-    bookmark_file: Optional[Path],
-    page_size: Optional[int],
+    bookmark_file: Path | None,
+    page_size: int | None,
     no_header: bool,
     no_footer: bool,
     sentences: bool,
@@ -1432,7 +1431,7 @@ def read(
     raw: bool,
     keep_footnotes: bool,
     keep_page_numbers: bool,
-    width: Optional[int],
+    width: int | None,
 ) -> None:
     """
     Interactively read an EPUB file in the terminal.

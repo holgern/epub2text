@@ -11,7 +11,7 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-import pypub  # type: ignore[import-untyped]
+import pypub
 import pytest
 
 from epub2text import epub2txt
@@ -42,7 +42,8 @@ def serve_directory(
     thread.start()
     try:
         host, port = server.server_address[:2]
-        yield f"http://{host}:{port}"
+        host_value = host.decode() if isinstance(host, bytes) else host
+        yield f"http://{host_value}:{port}"
     finally:
         # Stop the loop, then close the listening socket to avoid FD/memory growth
         with contextlib.suppress(Exception):
@@ -68,6 +69,7 @@ def test_epub2txt_downloads_from_url(tmp_path: Path) -> None:
 
     with serve_directory(tmp_path) as base_url:
         text = epub2txt(f"{base_url}/{epub_path.name}")
+        assert isinstance(text, str)
 
     assert "downloadable epub" in text.lower()
 

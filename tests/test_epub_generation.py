@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import cast
 
-import pypub  # type: ignore[import-untyped]
+import pypub
 import pytest
 
 from epub2text import EPUBParser, epub2txt

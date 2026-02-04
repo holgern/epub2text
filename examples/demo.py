@@ -16,9 +16,8 @@ Run with: python -m examples.demo
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
-import pypub  # type: ignore[import-untyped]
+import pypub
 
 from epub2text import (
     Bookmark,
@@ -43,7 +42,7 @@ from epub2text.formatters import (
 # =============================================================================
 
 
-def create_sample_epub(output_path: Optional[Path] = None) -> Path:
+def create_sample_epub(output_path: Path | None = None) -> Path:
     """
     Create a sample EPUB file for demonstration purposes.
 

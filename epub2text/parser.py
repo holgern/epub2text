@@ -7,7 +7,7 @@ import logging
 import re
 import urllib.parse
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import ebooklib  # type: ignore[import-untyped]
 from bs4 import BeautifulSoup, NavigableString  # type: ignore[import-untyped]
@@ -54,11 +54,11 @@ class EPUBParser:
         self.content_texts: dict[str, str] = {}
         self.content_lengths: dict[str, int] = {}
         self.processed_nav_structure: list[dict[str, Any]] = []
-        self._metadata: Optional[Metadata] = None
-        self._page_list_nav: Optional[tuple[Any, str]] = None
+        self._metadata: Metadata | None = None
+        self._page_list_nav: tuple[Any, str] | None = None
         self._page_list_nav_checked = False
         self._nav_processed = False
-        self._upper_title_cache: Optional[set[str]] = None
+        self._upper_title_cache: set[str] | None = None
 
         self._load_epub()
 
@@ -84,7 +84,7 @@ class EPUBParser:
         except Exception as e:
             raise ValueError(f"Failed to read EPUB file: {e}") from e
 
-    def _get_single_metadata(self, field: str) -> Optional[str]:
+    def _get_single_metadata(self, field: str) -> str | None:
         """Extract a single metadata value from Dublin Core field."""
         try:
             items = self.book.get_metadata("DC", field)
@@ -163,7 +163,7 @@ class EPUBParser:
         self,
         nav_structure: list[dict[str, Any]],
         chapters: list[Chapter],
-        parent_id: Optional[str] = None,
+        parent_id: str | None = None,
         level: int = 1,
         include_text: bool = True,
     ) -> None:
@@ -178,7 +178,7 @@ class EPUBParser:
             include_text: If True, include full text; if False, only metadata
         """
         for entry in nav_structure:
-            src: Optional[str] = entry.get("src")
+            src: str | None = entry.get("src")
             title: str = entry.get("title", "Untitled")
             children: list[dict[str, Any]] = entry.get("children", [])
 
@@ -438,12 +438,12 @@ class EPUBParser:
 
                 # Handle ordered lists
                 for ol in slice_soup.find_all("ol"):
-                    start_attr = ol.get("start")  # type: ignore[union-attr]
-                    start_num = int(start_attr) if start_attr else 1  # type: ignore[arg-type]
+                    start_attr = ol.get("start")
+                    start_num = int(start_attr) if start_attr else 1
                     for li_idx, li in enumerate(ol.find_all("li", recursive=False)):
                         number_text = f"{start_num + li_idx}) "
                         if li.string:
-                            li.string.replace_with(number_text + str(li.string))  # type: ignore[union-attr]
+                            li.string.replace_with(number_text + str(li.string))
                         else:
                             li.insert(0, NavigableString(number_text))
 
@@ -510,7 +510,7 @@ class EPUBParser:
         base_href: str,
         doc_order: dict[str, int],
         doc_order_decoded: dict[str, int],
-    ) -> tuple[Optional[str], Optional[int]]:
+    ) -> tuple[str | None, int | None]:
         """Find the best matching doc_key for a given base_href."""
         import os
 
@@ -606,7 +606,7 @@ class EPUBParser:
         link = li_element.find("a", recursive=False)
         span_text = li_element.find("span", recursive=False)
         title = "Untitled Section"
-        src: Optional[str] = None
+        src: str | None = None
         current_entry_node: dict[str, Any] = {"children": []}
 
         if link and "href" in link.attrs:
@@ -673,7 +673,7 @@ class EPUBParser:
                 )
         tree_structure_list.append(current_entry_node)
 
-    def _find_position_robust(self, doc_href: str, fragment_id: Optional[str]) -> int:
+    def _find_position_robust(self, doc_href: str, fragment_id: str | None) -> int:
         """
         Find the position of a fragment ID within a document.
 
@@ -835,7 +835,7 @@ class EPUBParser:
 
     def extract_chapters(
         self,
-        chapter_ids: Optional[list[str]] = None,
+        chapter_ids: list[str] | None = None,
         deduplicate_chapter_titles: bool = True,
         skip_toc: bool = False,
         include_chapter_title: bool = False,
@@ -881,7 +881,7 @@ class EPUBParser:
             selected = filtered
 
         # Combine text with chapter titles
-        parts = []
+        parts: list[str] = []
         for i, chapter in enumerate(selected):
             if chapter.text:
                 # Remove duplicate title if requested
@@ -944,7 +944,7 @@ class EPUBParser:
         """
         return bool(self._find_page_list_nav())
 
-    def _find_page_list_nav(self) -> Optional[tuple[Any, str]]:
+    def _find_page_list_nav(self) -> tuple[Any, str] | None:
         """
         Find the page-list navigation element in the EPUB.
 
@@ -1155,8 +1155,8 @@ class EPUBParser:
         page_num = 1
         current_sentences: list[str] = []
         current_size = 0  # Current size in chars or words
-        current_chapter_id: Optional[str] = None
-        current_chapter_title: Optional[str] = None
+        current_chapter_id: str | None = None
+        current_chapter_title: str | None = None
 
         def get_size(text: str) -> int:
             """Get size of text in chars or words."""
@@ -1362,15 +1362,15 @@ class EPUBParser:
         doc_href: str,
         position: int,
         chapter_map: list[tuple[str, int, str, str]],
-    ) -> tuple[Optional[str], Optional[str]]:
+    ) -> tuple[str | None, str | None]:
         """
         Find which chapter a given position belongs to.
 
         Returns:
             Tuple of (chapter_id, chapter_title) or (None, None)
         """
-        result_id: Optional[str] = None
-        result_title: Optional[str] = None
+        result_id: str | None = None
+        result_title: str | None = None
 
         for ch_doc, ch_pos, ch_id, ch_title in chapter_map:
             if ch_doc == doc_href and ch_pos <= position:
@@ -1381,7 +1381,7 @@ class EPUBParser:
 
         return result_id, result_title
 
-    def _get_spine_index(self, doc_href: str, spine_docs: list[str]) -> Optional[int]:
+    def _get_spine_index(self, doc_href: str, spine_docs: list[str]) -> int | None:
         """Get the index of a document in the spine, logging if missing."""
         try:
             return spine_docs.index(doc_href)
@@ -1393,8 +1393,8 @@ class EPUBParser:
         self,
         current_doc: str,
         current_pos: int,
-        next_doc: Optional[str],
-        next_pos: Optional[int],
+        next_doc: str | None,
+        next_pos: int | None,
         spine_docs: list[str],
         *,
         allow_wraparound: bool,
@@ -1439,7 +1439,7 @@ class EPUBParser:
     def _extract_text_between_positions(
         self,
         current: dict[str, Any],
-        next_entry: Optional[dict[str, Any]],
+        next_entry: dict[str, Any] | None,
         spine_docs: list[str],
     ) -> str:
         """
@@ -1488,7 +1488,7 @@ class EPUBParser:
 
     def extract_pages(
         self,
-        page_numbers: Optional[list[str]] = None,
+        page_numbers: list[str] | None = None,
         deduplicate_chapter_titles: bool = True,
         skip_toc: bool = False,
     ) -> str:
@@ -1518,8 +1518,8 @@ class EPUBParser:
         # Note: We don't filter out entire pages here anymore
         # Instead, we strip TOC content from pages below
 
-        parts = []
-        current_chapter: Optional[str] = None
+        parts: list[str] = []
+        current_chapter: str | None = None
 
         for page in selected:
             if not page.text:

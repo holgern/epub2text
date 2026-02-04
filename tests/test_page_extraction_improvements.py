@@ -9,7 +9,7 @@ Tests the new features:
 
 from pathlib import Path
 
-import pypub  # type: ignore[import-untyped]
+import pypub
 import pytest
 
 from epub2text import EPUBParser

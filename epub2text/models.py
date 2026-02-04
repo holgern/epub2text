@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 
 
 class PageSource(Enum):
@@ -25,8 +24,8 @@ class Page:
     text: str
     char_count: int
     source: PageSource
-    chapter_id: Optional[str] = None  # Which chapter this page belongs to
-    chapter_title: Optional[str] = None  # Title of the chapter
+    chapter_id: str | None = None  # Which chapter this page belongs to
+    chapter_title: str | None = None  # Title of the chapter
 
     def __str__(self) -> str:
         source_str = "print" if self.source == PageSource.EPUB_PAGE_LIST else "syn"
@@ -41,7 +40,7 @@ class Chapter:
     title: str
     text: str
     char_count: int
-    parent_id: Optional[str] = None
+    parent_id: str | None = None
     level: int = 0
 
     def __str__(self) -> str:
@@ -52,18 +51,18 @@ class Chapter:
 class Metadata:
     """EPUB metadata."""
 
-    title: Optional[str] = None
+    title: str | None = None
     authors: list[str] = field(default_factory=list)
-    publisher: Optional[str] = None
-    publication_year: Optional[str] = None
-    description: Optional[str] = None
+    publisher: str | None = None
+    publication_year: str | None = None
+    description: str | None = None
     # Required EPUB3 metadata
-    identifier: Optional[str] = None
-    language: Optional[str] = None
+    identifier: str | None = None
+    language: str | None = None
     # Optional Dublin Core metadata
     contributors: list[str] = field(default_factory=list)
-    rights: Optional[str] = None
-    coverage: Optional[str] = None
+    rights: str | None = None
+    coverage: str | None = None
 
     def __str__(self) -> str:
         lines = []

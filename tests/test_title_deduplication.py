@@ -7,7 +7,7 @@ parameter in extract_chapters().
 
 from pathlib import Path
 
-import pypub  # type: ignore[import-untyped]
+import pypub
 import pytest
 
 from epub2text import EPUBParser

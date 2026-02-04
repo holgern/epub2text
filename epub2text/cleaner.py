@@ -96,7 +96,7 @@ class TextCleaner:
         markers = {}
         marker_count = [0]
 
-        def save_marker(match):
+        def save_marker(match: re.Match[str]) -> str:
             placeholder = f"___MARKER_{marker_count[0]}___"
             markers[placeholder] = match.group(0)
             marker_count[0] += 1
@@ -196,7 +196,7 @@ class TextCleaner:
         abbrev_map = {}
         abbrev_counter = [0]
 
-        def protect_abbrev(match):
+        def protect_abbrev(match: re.Match[str]) -> str:
             placeholder = f"__ABBREV_{abbrev_counter[0]}__"
             abbrev_map[placeholder] = match.group(0)
             abbrev_counter[0] += 1

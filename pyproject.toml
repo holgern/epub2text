@@ -10,7 +10,7 @@ include = ["epub2text*"]
 name = "epub2text"
 description = "A simple tool to extract text from EPUB files."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = {file = "LICENSE"}
 authors = [
     {name = "Holger Nahrstaedt", email = "nahrstaedt@gmail.com"}
@@ -67,7 +67,7 @@ commands =
 """
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
@@ -80,7 +80,20 @@ warn_no_return = true
 warn_unreachable = true
 strict_equality = true
 exclude = [
+    "^build/",
+    "^epub2text\\.egg-info/",
 ]
+
+[[tool.mypy.overrides]]
+module = [
+    "defusedxml",
+    "defusedxml.*",
+    "phrasplit",
+    "pypub",
+    "pypub.*",
+    "setuptools",
+]
+ignore_missing_imports = true
 
 [tool.git-cliff.changelog]
 # A Tera template to be rendered as the changelog's header.

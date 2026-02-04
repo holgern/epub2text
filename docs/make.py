@@ -20,7 +20,7 @@ import subprocess
 import sys
 
 
-def main():
+def main() -> int:
     """Run the script."""
     sphinx_build = "sphinx-build"
     build_dir = os.path.join("docs", "build")
