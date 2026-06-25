@@ -1618,22 +1618,51 @@ def inspect_structure(filepath: Path, as_json: bool) -> None:
 @click.option(
     "--raw/--no-raw", default=False, help="Include raw decoded source documents"
 )
+@click.option(
+    "--xhtml-fragments/--no-xhtml-fragments",
+    default=False,
+    help="Include sanitized inline XHTML fragments in structured JSON output.",
+)
+@click.option(
+    "--markdown-fragments/--no-markdown-fragments",
+    default=False,
+    help=(
+        "Include Markdown translations of inline XHTML fragments in "
+        "structured JSON output."
+    ),
+)
+@click.option(
+    "--markdown-flavor",
+    type=click.Choice(["commonmark", "gfm"]),
+    default="commonmark",
+    show_default=True,
+    help="Markdown flavor for inline fragment translation.",
+)
 def extract_structure(
     filepath: Path,
     output: Path | None,
     segments: str | None,
     include_runs: bool,
     raw: bool,
+    xhtml_fragments: bool,
+    markdown_fragments: bool,
+    markdown_flavor: str,
 ) -> None:
     """Extract structured EPUB JSON without modifying the EPUB."""
     parser = EPUBParser(str(filepath))
     extraction = parser.extract_structured(
-        include_segments=segments is not None, segment_mode=segments or "sentence"
+        include_segments=segments is not None,
+        segment_mode=segments or "sentence",
+        include_xhtml_fragments=xhtml_fragments,
+        include_markdown_fragments=markdown_fragments,
+        markdown_flavor=markdown_flavor,
     )
     data = extraction.to_json(
         include_raw=raw,
         include_runs=include_runs,
         include_segments=segments is not None,
+        include_xhtml_fragments=xhtml_fragments,
+        include_markdown_fragments=markdown_fragments,
         indent=2,
     )
     if output:

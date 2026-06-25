@@ -61,6 +61,30 @@ Set `include_xhtml_fragments=True` on `extract_structured()` or
 segments when `include_segments=True`. Fragment output is opt-in and `to_json()` omits
 `xhtml_fragment` unless `include_xhtml_fragments=True` is passed.
 
+Set `include_markdown_fragments=True` to attach Markdown translations of the same inline
+structure to blocks and, when `include_segments=True`, to segments. Markdown fragments
+are a lossy, readable representation rendered from structured runs. Use `xhtml_fragment`
+when exact inline semantics are required. Pass `include_markdown_fragments=True` to
+`to_dict()` or `to_json()` to serialize `markdown_fragment`.
+
+```python
+from epub2text import EPUBParser
+
+parser = EPUBParser("book.epub")
+extraction = parser.extract_structured(
+    include_segments=True,
+    include_xhtml_fragments=True,
+    include_markdown_fragments=True,
+    markdown_flavor="gfm",
+)
+```
+
+```bash
+epub2text extract-structure book.epub --xhtml-fragments -o structure.json
+epub2text extract-structure book.epub --markdown-fragments --markdown-flavor gfm -o structure.json
+epub2text extract-structure book.epub --segments sentence --xhtml-fragments --markdown-fragments -o structure.json
+```
+
 ## Installation
 
 ```bash

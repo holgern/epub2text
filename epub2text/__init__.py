@@ -27,6 +27,7 @@ from .structured import (
     EpubSpineItem,
     ExtractionPolicy,
     InlineTagRun,
+    MarkdownFragment,
     NavigationEntry,
     SourceDocument,
     StructuredEpubExtraction,
@@ -64,6 +65,7 @@ __all__ = [
     "InlineTagRun",
     "EntityRun",
     "XhtmlFragment",
+    "MarkdownFragment",
     "StructuredEpubExtraction",
     "extract_epub_structure",
 ]

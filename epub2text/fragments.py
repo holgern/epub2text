@@ -3,32 +3,22 @@
 from __future__ import annotations
 
 import html
-from dataclasses import dataclass
 from html.parser import HTMLParser
 
 from .diagnostics import Diagnostic
+from .inline_spans import (
+    InlineSpan,
+    InlineSpanIssue,
+    build_inline_spans,
+    iter_text_events,
+)
 from .structured import (
-    EntityRun,
     ExtractionPolicy,
     InlineTagRun,
     TextBlock,
-    TextRun,
     TextSegment,
     XhtmlFragment,
 )
-
-VOID_INLINE_TAGS = frozenset({"br", "wbr"})
-
-
-@dataclass
-class _InlineSpan:
-    tag: str
-    attrs: tuple[tuple[str, str], ...]
-    start: int
-    source: int
-    run: InlineTagRun
-    end: int | None = None
-    empty: bool = False
 
 
 def _diagnostic(
@@ -114,84 +104,36 @@ def _empty_tag(tag: str, attrs: tuple[tuple[str, str], ...]) -> str:
     return f"<{tag}{suffix}/>"
 
 
-def _element_spans(
-    block: TextBlock, policy: ExtractionPolicy, diagnostics: list[Diagnostic]
-) -> list[_InlineSpan]:
-    stack: list[_InlineSpan] = []
-    spans: list[_InlineSpan] = []
-    for run in block.runs:
-        if not isinstance(run, InlineTagRun):
-            continue
-        sanitized = _sanitize_tag(run, policy, block, diagnostics)
-        if sanitized is None:
-            continue
-        tag, attrs = sanitized
-        pos = run.block_text_start or 0
-        if (
-            run.kind in {"inline_start", "opaque_inline"}
-            and tag not in VOID_INLINE_TAGS
-        ):
-            stack.append(_InlineSpan(tag, attrs, pos, run.source_char_start, run))
-        elif run.kind == "inline_end":
-            for index in range(len(stack) - 1, -1, -1):
-                if stack[index].tag == tag:
-                    item = stack.pop(index)
-                    item.end = pos
-                    spans.append(item)
-                    break
-            else:
-                diagnostics.append(
-                    _diagnostic(
-                        "xhtml_fragment_unbalanced_inline",
-                        f"Unmatched closing inline tag: {tag}",
-                        block,
-                        run,
-                    )
-                )
-        else:
-            spans.append(
-                _InlineSpan(
-                    tag, attrs, pos, run.source_char_start, run, end=pos, empty=True
-                )
-            )
-    for item in stack:
-        item.end = len(block.text)
+def _span_diagnostics(
+    issues: list[InlineSpanIssue], block: TextBlock, diagnostics: list[Diagnostic]
+) -> None:
+    for issue in issues:
+        message = (
+            f"Unmatched closing inline tag: {issue.tag}"
+            if issue.kind == "unmatched_closing"
+            else f"Unclosed inline tag: {issue.tag}"
+        )
         diagnostics.append(
             _diagnostic(
                 "xhtml_fragment_unbalanced_inline",
-                f"Unclosed inline tag: {item.tag}",
+                message,
                 block,
-                item.run,
+                issue.run,
             )
         )
-        spans.append(item)
-    return spans
-
-
-def _text_events(block: TextBlock, start: int, end: int) -> dict[int, list[str]]:
-    events: dict[int, list[str]] = {}
-    for run in block.runs:
-        if not isinstance(run, TextRun | EntityRun):
-            continue
-        overlap_start = max(start, run.block_text_start)
-        overlap_end = min(end, run.block_text_end)
-        if overlap_start >= overlap_end:
-            continue
-        text = run.text[
-            overlap_start - run.block_text_start : overlap_end - run.block_text_start
-        ]
-        events.setdefault(overlap_start, []).append(html.escape(text, quote=False))
-    return events
 
 
 def _render(
     block: TextBlock, start: int, end: int, policy: ExtractionPolicy
 ) -> XhtmlFragment:
     diagnostics: list[Diagnostic] = []
-    spans = _element_spans(block, policy, diagnostics)
-    opens: dict[int, list[_InlineSpan]] = {}
-    closes: dict[int, list[_InlineSpan]] = {}
-    empties: dict[int, list[_InlineSpan]] = {}
+    spans, issues = build_inline_spans(
+        block, lambda run: _sanitize_tag(run, policy, block, diagnostics)
+    )
+    _span_diagnostics(issues, block, diagnostics)
+    opens: dict[int, list[InlineSpan]] = {}
+    closes: dict[int, list[InlineSpan]] = {}
+    empties: dict[int, list[InlineSpan]] = {}
     active = []
     for span in spans:
         s = span.start
@@ -206,7 +148,9 @@ def _render(
             opens.setdefault(os, []).append(span)
             closes.setdefault(oe, []).append(span)
             active.append(span.tag)
-    text_events = _text_events(block, start, end)
+    text_events = iter_text_events(
+        block, start, end, lambda text: html.escape(text, quote=False)
+    )
     points = sorted({start, end, *opens, *closes, *empties, *text_events})
     parts: list[str] = []
     for point in points:

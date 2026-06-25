@@ -71,7 +71,46 @@ DEFAULT_ALLOWED_INLINE_FRAGMENT_ATTRS = (
         frozenset({"class", "id", "lang", "xml:lang", "dir", "title", "epub:type"}),
     ),
 )
+DEFAULT_ALLOWED_MARKDOWN_INLINE_TAGS = frozenset(
+    {
+        "a",
+        "abbr",
+        "b",
+        "bdi",
+        "bdo",
+        "br",
+        "cite",
+        "code",
+        "data",
+        "del",
+        "dfn",
+        "em",
+        "i",
+        "ins",
+        "kbd",
+        "mark",
+        "q",
+        "rp",
+        "rt",
+        "ruby",
+        "s",
+        "samp",
+        "small",
+        "span",
+        "strong",
+        "sub",
+        "sup",
+        "time",
+        "u",
+        "var",
+        "wbr",
+    }
+)
+DEFAULT_ALLOWED_MARKDOWN_RAW_HTML_ATTRS = (
+    ("*", frozenset({"class", "lang", "xml:lang", "dir", "title", "epub:type"})),
+)
 SCHEMA_VERSION = "epub2text.structured.v1"
+MarkdownFlavor = Literal["commonmark", "gfm"]
 
 
 @dataclass(frozen=True)
@@ -89,6 +128,19 @@ class ExtractionPolicy:
     allowed_inline_fragment_tags: frozenset[str] = DEFAULT_ALLOWED_INLINE_FRAGMENT_TAGS
     allowed_inline_fragment_attrs: tuple[tuple[str, frozenset[str]], ...] = (
         DEFAULT_ALLOWED_INLINE_FRAGMENT_ATTRS
+    )
+    markdown_flavor: MarkdownFlavor = "commonmark"
+    markdown_unknown_inline: Literal["unwrap", "drop"] = "unwrap"
+    markdown_preserve_raw_html_for: frozenset[str] = frozenset()
+    allowed_markdown_inline_tags: frozenset[str] = DEFAULT_ALLOWED_MARKDOWN_INLINE_TAGS
+    allowed_markdown_raw_html_tags: frozenset[str] = frozenset(
+        {"sub", "sup", "ruby", "rt", "rp"}
+    )
+    allowed_markdown_raw_html_attrs: tuple[tuple[str, frozenset[str]], ...] = (
+        DEFAULT_ALLOWED_MARKDOWN_RAW_HTML_ATTRS
+    )
+    allowed_markdown_link_schemes: frozenset[str] = frozenset(
+        {"", "http", "https", "mailto"}
     )
 
 
@@ -221,6 +273,17 @@ class XhtmlFragment:
 
 
 @dataclass(frozen=True)
+class MarkdownFragment:
+    text: str
+    markdown: str
+    flavor: MarkdownFlavor
+    tag_skeleton: tuple[str, ...]
+    source_char_start: int | None
+    source_char_end: int | None
+    diagnostics: list[Diagnostic]
+
+
+@dataclass(frozen=True)
 class TextBlock:
     id: str
     document_id: str
@@ -247,6 +310,7 @@ class TextBlock:
     extraction_policy: str
     diagnostics: list[Diagnostic]
     xhtml_fragment: XhtmlFragment | None = None
+    markdown_fragment: MarkdownFragment | None = None
 
 
 @dataclass(frozen=True)
@@ -263,6 +327,7 @@ class TextSegment:
     page_number: str | None
     diagnostics: list[Diagnostic]
     xhtml_fragment: XhtmlFragment | None = None
+    markdown_fragment: MarkdownFragment | None = None
 
 
 def stable_hash(value: str, length: int = 8) -> str:
@@ -276,6 +341,7 @@ def _convert(
     include_runs: bool,
     include_segments: bool,
     include_xhtml_fragments: bool,
+    include_markdown_fragments: bool,
 ) -> Any:
     if is_dataclass(obj):
         result = {}
@@ -298,12 +364,17 @@ def _convert(
                 not include_xhtml_fragments or getattr(obj, field.name) is None
             ):
                 continue
+            if field.name == "markdown_fragment" and (
+                not include_markdown_fragments or getattr(obj, field.name) is None
+            ):
+                continue
             result[field.name] = _convert(
                 getattr(obj, field.name),
                 include_raw=include_raw,
                 include_runs=include_runs,
                 include_segments=include_segments,
                 include_xhtml_fragments=include_xhtml_fragments,
+                include_markdown_fragments=include_markdown_fragments,
             )
         return result
     if isinstance(obj, list):
@@ -314,6 +385,7 @@ def _convert(
                 include_runs=include_runs,
                 include_segments=include_segments,
                 include_xhtml_fragments=include_xhtml_fragments,
+                include_markdown_fragments=include_markdown_fragments,
             )
             for item in obj
         ]
@@ -325,6 +397,7 @@ def _convert(
                 include_runs=include_runs,
                 include_segments=include_segments,
                 include_xhtml_fragments=include_xhtml_fragments,
+                include_markdown_fragments=include_markdown_fragments,
             )
             for item in obj
         ]
@@ -349,6 +422,7 @@ class StructuredEpubExtraction:
         include_runs: bool = True,
         include_segments: bool = True,
         include_xhtml_fragments: bool = False,
+        include_markdown_fragments: bool = False,
     ) -> dict[str, Any]:
         return {
             "schema": SCHEMA_VERSION,
@@ -359,6 +433,7 @@ class StructuredEpubExtraction:
                 include_runs=include_runs,
                 include_segments=include_segments,
                 include_xhtml_fragments=include_xhtml_fragments,
+                include_markdown_fragments=include_markdown_fragments,
             ),
             "documents": _convert(
                 self.documents,
@@ -366,6 +441,7 @@ class StructuredEpubExtraction:
                 include_runs=include_runs,
                 include_segments=include_segments,
                 include_xhtml_fragments=include_xhtml_fragments,
+                include_markdown_fragments=include_markdown_fragments,
             ),
             "navigation": _convert(
                 self.navigation,
@@ -373,6 +449,7 @@ class StructuredEpubExtraction:
                 include_runs=include_runs,
                 include_segments=include_segments,
                 include_xhtml_fragments=include_xhtml_fragments,
+                include_markdown_fragments=include_markdown_fragments,
             ),
             "blocks": _convert(
                 self.blocks,
@@ -380,6 +457,7 @@ class StructuredEpubExtraction:
                 include_runs=include_runs,
                 include_segments=include_segments,
                 include_xhtml_fragments=include_xhtml_fragments,
+                include_markdown_fragments=include_markdown_fragments,
             ),
             "segments": _convert(
                 self.segments if include_segments else [],
@@ -387,6 +465,7 @@ class StructuredEpubExtraction:
                 include_runs=include_runs,
                 include_segments=include_segments,
                 include_xhtml_fragments=include_xhtml_fragments,
+                include_markdown_fragments=include_markdown_fragments,
             ),
             "diagnostics": _convert(
                 self.diagnostics,
@@ -394,6 +473,7 @@ class StructuredEpubExtraction:
                 include_runs=include_runs,
                 include_segments=include_segments,
                 include_xhtml_fragments=include_xhtml_fragments,
+                include_markdown_fragments=include_markdown_fragments,
             ),
         }
 
@@ -404,6 +484,7 @@ class StructuredEpubExtraction:
         include_runs: bool = True,
         include_segments: bool = True,
         include_xhtml_fragments: bool = False,
+        include_markdown_fragments: bool = False,
         indent: int | None = None,
     ) -> str:
         return json.dumps(
@@ -412,6 +493,7 @@ class StructuredEpubExtraction:
                 include_runs=include_runs,
                 include_segments=include_segments,
                 include_xhtml_fragments=include_xhtml_fragments,
+                include_markdown_fragments=include_markdown_fragments,
             ),
             ensure_ascii=False,
             indent=indent,
@@ -427,6 +509,8 @@ def extract_epub_structure(
     include_inline_runs: bool = True,
     include_segments: bool = False,
     include_xhtml_fragments: bool = False,
+    include_markdown_fragments: bool = False,
+    markdown_flavor: MarkdownFlavor | None = None,
     policy: ExtractionPolicy | None = None,
 ) -> StructuredEpubExtraction:
     from .parser import EPUBParser
@@ -439,4 +523,6 @@ def extract_epub_structure(
         include_inline_runs=include_inline_runs,
         include_segments=include_segments,
         include_xhtml_fragments=include_xhtml_fragments,
+        include_markdown_fragments=include_markdown_fragments,
+        markdown_flavor=markdown_flavor,
     )

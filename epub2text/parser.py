@@ -8,7 +8,7 @@ import re
 import urllib.parse
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import ebooklib  # type: ignore[import-untyped]
 from bs4 import BeautifulSoup, NavigableString  # type: ignore[import-untyped]
@@ -1768,6 +1768,8 @@ class EPUBParser:
         include_inline_runs: bool = True,
         include_segments: bool = False,
         include_xhtml_fragments: bool = False,
+        include_markdown_fragments: bool = False,
+        markdown_flavor: Literal["commonmark", "gfm"] | None = None,
         segment_mode: str = "sentence",
     ) -> StructuredEpubExtraction:
         """Return a structured, loss-aware EPUB extraction model."""
@@ -1777,11 +1779,19 @@ class EPUBParser:
             render_block_xhtml_fragment,
             render_segment_xhtml_fragment,
         )
+        from .markdown_fragments import (
+            render_block_markdown_fragment,
+            render_segment_markdown_fragment,
+        )
         from .package import inspect_package
         from .segments import extract_segments
         from .source import sha256_bytes
 
         extraction_policy = policy or ExtractionPolicy()
+        if markdown_flavor is not None:
+            extraction_policy = replace(
+                extraction_policy, markdown_flavor=markdown_flavor
+            )
         documents = self.get_spine_documents(
             include_byte_offsets=include_offsets,
             include_non_linear=extraction_policy.include_non_linear_spine,
@@ -1792,32 +1802,51 @@ class EPUBParser:
         diagnostics = []
         for document in documents:
             document_blocks = extract_blocks(document, extraction_policy)
-            if include_xhtml_fragments:
-                document_blocks = [
-                    replace(
-                        block,
-                        xhtml_fragment=render_block_xhtml_fragment(
-                            block, extraction_policy
-                        ),
-                    )
-                    for block in document_blocks
-                ]
+            if include_xhtml_fragments or include_markdown_fragments:
+                rendered_blocks = []
+                for block in document_blocks:
+                    if include_xhtml_fragments:
+                        block = replace(
+                            block,
+                            xhtml_fragment=render_block_xhtml_fragment(
+                                block, extraction_policy
+                            ),
+                        )
+                    if include_markdown_fragments:
+                        block = replace(
+                            block,
+                            markdown_fragment=render_block_markdown_fragment(
+                                block, extraction_policy
+                            ),
+                        )
+                    rendered_blocks.append(block)
+                document_blocks = rendered_blocks
             blocks.extend(document_blocks)
             diagnostics.extend(document.diagnostics)
             for block in document_blocks:
                 diagnostics.extend(block.diagnostics)
         segments = extract_segments(blocks, segment_mode) if include_segments else []
-        if include_xhtml_fragments and include_segments:
+        if include_segments and (include_xhtml_fragments or include_markdown_fragments):
             blocks_by_id = {block.id: block for block in blocks}
-            segments = [
-                replace(
-                    segment,
-                    xhtml_fragment=render_segment_xhtml_fragment(
-                        blocks_by_id[segment.block_id], segment, extraction_policy
-                    ),
-                )
-                for segment in segments
-            ]
+            rendered_segments = []
+            for segment in segments:
+                block = blocks_by_id[segment.block_id]
+                if include_xhtml_fragments:
+                    segment = replace(
+                        segment,
+                        xhtml_fragment=render_segment_xhtml_fragment(
+                            block, segment, extraction_policy
+                        ),
+                    )
+                if include_markdown_fragments:
+                    segment = replace(
+                        segment,
+                        markdown_fragment=render_segment_markdown_fragment(
+                            block, segment, extraction_policy
+                        ),
+                    )
+                rendered_segments.append(segment)
+            segments = rendered_segments
         package = inspect_package(self)
         diagnostics.extend(package.diagnostics)
         for entry in navigation:
@@ -1825,9 +1854,13 @@ class EPUBParser:
         for block in blocks:
             if block.xhtml_fragment is not None:
                 diagnostics.extend(block.xhtml_fragment.diagnostics)
+            if block.markdown_fragment is not None:
+                diagnostics.extend(block.markdown_fragment.diagnostics)
         for segment in segments:
             if segment.xhtml_fragment is not None:
                 diagnostics.extend(segment.xhtml_fragment.diagnostics)
+            if segment.markdown_fragment is not None:
+                diagnostics.extend(segment.markdown_fragment.diagnostics)
         if extraction_policy.strict_offsets and any(
             d.severity in {"warning", "error"} for d in diagnostics
         ):

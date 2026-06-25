@@ -38,6 +38,8 @@ The structured API uses dataclasses:
 * ``TextSegment`` for sentence, paragraph, or clause slices.
 * ``Diagnostic`` for loss, fallback, and unresolved-reference reporting.
 * ``XhtmlFragment`` for opt-in sanitized inline XHTML attached to blocks and segments.
+* ``MarkdownFragment`` for opt-in Markdown translations of inline XHTML attached to
+  blocks and segments.
 
 Offset semantics
 ----------------
@@ -73,6 +75,40 @@ warning or error diagnostics, including fragment diagnostics.
 JSON export omits ``xhtml_fragment`` by default, even if fragments were generated.
 Pass ``include_xhtml_fragments=True`` to ``to_dict()`` or ``to_json()`` to include
 generated fragments. This keeps the default payload compatible and compact.
+
+Markdown fragments
+------------------
+
+Call ``EPUBParser.extract_structured(include_markdown_fragments=True)`` or
+``extract_epub_structure(..., include_markdown_fragments=True)`` to attach
+``markdown_fragment`` to each ``TextBlock``. When ``include_segments=True`` is also
+set, each ``TextSegment`` receives a fragment for its visible text range. Markdown
+fragments are rendered from structured runs, not from serialized XHTML.
+
+``MarkdownFragment.markdown`` is a readable, lossy representation of the same visible
+text range as ``xhtml_fragment``. The default flavor is ``commonmark`` and callers may
+select ``gfm`` with ``markdown_flavor="gfm"`` or the CLI ``--markdown-flavor`` option.
+The first renderer preserves emphasis, strong text, safe inline links, code-like spans,
+and hard line breaks. Unsupported or unsafe inline tags unwrap or drop with diagnostics
+such as ``markdown_fragment_no_markdown_equivalent``,
+``markdown_fragment_invalid_href``, and ``markdown_fragment_disallowed_tag``.
+
+Raw HTML fallback is disabled by default. Treat Markdown fragments as downstream
+reading aids for translation, TTS, or agent workflows, not as a lossless EPUB rewrite
+format. Use ``xhtml_fragment`` when exact inline semantics are required.
+
+JSON export omits ``markdown_fragment`` by default, even if fragments were generated.
+Pass ``include_markdown_fragments=True`` to ``to_dict()`` or ``to_json()`` to include
+generated fragments.
+
+CLI examples
+------------
+
+.. code-block:: bash
+
+   epub2text extract-structure book.epub --xhtml-fragments -o structure.json
+   epub2text extract-structure book.epub --markdown-fragments --markdown-flavor gfm -o structure.json
+   epub2text extract-structure book.epub --segments sentence --xhtml-fragments --markdown-fragments -o structure.json
 Diagnostics and strict mode
 ---------------------------
 

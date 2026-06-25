@@ -1,8 +1,11 @@
 import json
 
+import pytest
+from click.testing import CliRunner
 from ebooklib import epub
 
 from epub2text import EPUBParser, extract_epub_structure
+from epub2text.cli import cli
 
 
 def make_epub(path):
@@ -88,6 +91,19 @@ def test_extract_epub_structure_convenience(tmp_path):
     extraction = extract_epub_structure(str(epub_path), include_segments=True)
     assert extraction.blocks
     assert extraction.segments
+
+
+def test_extract_epub_structure_supports_markdown_fragments(tmp_path):
+    epub_path = tmp_path / "book.epub"
+    make_epub_with_body(epub_path, "<p><s>old</s> new</p>")
+    extraction = extract_epub_structure(
+        str(epub_path),
+        include_markdown_fragments=True,
+        markdown_flavor="gfm",
+    )
+    block = next(block for block in extraction.blocks if block.tag_name == "p")
+    assert block.markdown_fragment.markdown == "~~old~~ new"
+    assert block.xhtml_fragment is None
 
 
 def visible_text(xhtml):
@@ -297,3 +313,175 @@ def test_xhtml_segments_split_emphasis_sentence_boundaries(tmp_path):
         "<em>I can’t force her, for all that I need her.</em>",
         "Perhaps Tisamon would have more luck in persuading her.",
     ]
+
+
+def test_markdown_block_fragment_preserves_emphasis(tmp_path):
+    epub_path = tmp_path / "book.epub"
+    make_epub_with_body(epub_path, "<p>A <em>small</em> test.</p>")
+    extraction = EPUBParser(str(epub_path)).extract_structured(
+        include_markdown_fragments=True
+    )
+    block = next(block for block in extraction.blocks if block.tag_name == "p")
+    assert block.markdown_fragment.markdown == "A *small* test."
+    assert block.xhtml_fragment is None
+
+
+def test_markdown_block_fragment_preserves_strong(tmp_path):
+    epub_path = tmp_path / "book.epub"
+    make_epub_with_body(epub_path, "<p>A <strong>large</strong> test.</p>")
+    extraction = EPUBParser(str(epub_path)).extract_structured(
+        include_markdown_fragments=True
+    )
+    block = next(block for block in extraction.blocks if block.tag_name == "p")
+    assert block.markdown_fragment.markdown == "A **large** test."
+
+
+def test_markdown_link_fragment(tmp_path):
+    epub_path = tmp_path / "book.epub"
+    make_epub_with_body(epub_path, '<p>See <a href="chap.xhtml#x">chapter</a>.</p>')
+    extraction = EPUBParser(str(epub_path)).extract_structured(
+        include_markdown_fragments=True
+    )
+    block = next(block for block in extraction.blocks if block.tag_name == "p")
+    assert block.markdown_fragment.markdown == "See [chapter](chap.xhtml#x)."
+
+
+def test_markdown_code_span_uses_dynamic_backticks(tmp_path):
+    epub_path = tmp_path / "book.epub"
+    make_epub_with_body(epub_path, "<p>Use <code>a ` b</code>.</p>")
+    extraction = EPUBParser(str(epub_path)).extract_structured(
+        include_markdown_fragments=True
+    )
+    block = next(block for block in extraction.blocks if block.tag_name == "p")
+    assert block.markdown_fragment.markdown == "Use ``a ` b``."
+
+
+def test_markdown_line_break_uses_hard_break(tmp_path):
+    epub_path = tmp_path / "book.epub"
+    make_epub_with_body(epub_path, "<p>A<br/>B</p>")
+    extraction = EPUBParser(str(epub_path)).extract_structured(
+        include_markdown_fragments=True
+    )
+    block = next(block for block in extraction.blocks if block.tag_name == "p")
+    assert block.markdown_fragment.markdown == "A  \nB"
+
+
+def test_markdown_gfm_strikethrough(tmp_path):
+    epub_path = tmp_path / "book.epub"
+    make_epub_with_body(epub_path, "<p><s>old</s> new</p>")
+    extraction = EPUBParser(str(epub_path)).extract_structured(
+        include_markdown_fragments=True,
+        markdown_flavor="gfm",
+    )
+    block = next(block for block in extraction.blocks if block.tag_name == "p")
+    assert block.markdown_fragment.markdown == "~~old~~ new"
+
+
+def test_markdown_commonmark_strikethrough_unwraps(tmp_path):
+    epub_path = tmp_path / "book.epub"
+    make_epub_with_body(epub_path, "<p><s>old</s> new</p>")
+    extraction = EPUBParser(str(epub_path)).extract_structured(
+        include_markdown_fragments=True
+    )
+    block = next(block for block in extraction.blocks if block.tag_name == "p")
+    assert block.markdown_fragment.markdown == "old new"
+    assert any(
+        d.code == "markdown_fragment_no_markdown_equivalent"
+        for d in extraction.diagnostics
+    )
+
+
+def test_markdown_segment_starts_inside_emphasis(tmp_path):
+    epub_path = tmp_path / "book.epub"
+    make_epub_with_body(epub_path, "<p>Alpha. <em>Bravo. Charlie.</em></p>")
+    extraction = EPUBParser(str(epub_path)).extract_structured(
+        include_segments=True,
+        include_markdown_fragments=True,
+    )
+    markdowns = [segment.markdown_fragment.markdown for segment in extraction.segments]
+    assert "*Bravo.*" in markdowns
+    assert "*Charlie.*" in markdowns
+
+
+def test_markdown_default_json_omits_fragments(tmp_path):
+    epub_path = tmp_path / "book.epub"
+    make_epub_with_body(epub_path, "<p>A <em>small</em> test.</p>")
+    extraction = EPUBParser(str(epub_path)).extract_structured(
+        include_markdown_fragments=True
+    )
+    payload = extraction.to_dict()
+    assert "markdown_fragment" not in payload["blocks"][0]
+
+
+def test_markdown_fragments_serialize_when_requested(tmp_path):
+    epub_path = tmp_path / "book.epub"
+    make_epub_with_body(epub_path, "<p>A <em>small</em> test.</p>")
+    extraction = EPUBParser(str(epub_path)).extract_structured(
+        include_markdown_fragments=True
+    )
+    payload = extraction.to_dict(include_markdown_fragments=True)
+    assert payload["blocks"][0]["markdown_fragment"]["markdown"] == "A *small* test."
+
+
+def test_markdown_escapes_inline_markers_but_not_periods(tmp_path):
+    epub_path = tmp_path / "book.epub"
+    make_epub_with_body(epub_path, "<p>A *literal* marker.</p>")
+    extraction = EPUBParser(str(epub_path)).extract_structured(
+        include_markdown_fragments=True
+    )
+    block = next(block for block in extraction.blocks if block.tag_name == "p")
+    assert block.markdown_fragment.markdown == r"A \*literal\* marker."
+
+
+@pytest.mark.parametrize(
+    "href",
+    ["javascript:alert(1)", "data:text/plain,hello"],
+)
+def test_markdown_unsafe_link_unwraps(tmp_path, href):
+    epub_path = tmp_path / "book.epub"
+    make_epub_with_body(epub_path, f'<p><a href="{href}">bad</a></p>')
+    extraction = EPUBParser(str(epub_path)).extract_structured(
+        include_markdown_fragments=True
+    )
+    block = next(block for block in extraction.blocks if block.tag_name == "p")
+    assert block.markdown_fragment.markdown == block.text
+    assert block.markdown_fragment.markdown.strip() == "bad"
+    assert any(
+        d.code == "markdown_fragment_invalid_href" for d in extraction.diagnostics
+    )
+
+
+def test_markdown_sub_unwraps_by_default(tmp_path):
+    epub_path = tmp_path / "book.epub"
+    make_epub_with_body(epub_path, "<p>H<sub>2</sub>O</p>")
+    extraction = EPUBParser(str(epub_path)).extract_structured(
+        include_markdown_fragments=True
+    )
+    block = next(block for block in extraction.blocks if block.tag_name == "p")
+    assert block.markdown_fragment.markdown == "H2O"
+
+
+def test_extract_structure_cli_includes_markdown_fragments(tmp_path):
+    epub_path = tmp_path / "book.epub"
+    output_path = tmp_path / "structure.json"
+    make_epub_with_body(epub_path, "<p>A <em>small</em> test.</p>")
+    result = CliRunner().invoke(
+        cli,
+        [
+            "extract-structure",
+            str(epub_path),
+            "--segments",
+            "sentence",
+            "--xhtml-fragments",
+            "--markdown-fragments",
+            "--markdown-flavor",
+            "gfm",
+            "--output",
+            str(output_path),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert payload["blocks"][0]["xhtml_fragment"]["xhtml"] == "A <em>small</em> test."
+    assert payload["blocks"][0]["markdown_fragment"]["markdown"] == "A *small* test."
+    assert payload["blocks"][0]["markdown_fragment"]["flavor"] == "gfm"
