@@ -1783,9 +1783,11 @@ class EPUBParser:
             render_block_markdown_fragment,
             render_segment_markdown_fragment,
         )
+        from .nav import navigation_from_parser
         from .package import inspect_package
         from .segments import extract_segments
         from .source import sha256_bytes
+        from .toc_map import annotate_blocks_with_navigation
 
         extraction_policy = policy or ExtractionPolicy()
         if markdown_flavor is not None:
@@ -1797,7 +1799,7 @@ class EPUBParser:
             include_non_linear=extraction_policy.include_non_linear_spine,
             include_nav_documents=extraction_policy.include_nav_documents,
         )
-        navigation = self.get_navigation()
+        navigation = navigation_from_parser(self, documents)
         blocks = []
         diagnostics = []
         for document in documents:
@@ -1825,6 +1827,7 @@ class EPUBParser:
             diagnostics.extend(document.diagnostics)
             for block in document_blocks:
                 diagnostics.extend(block.diagnostics)
+        blocks = annotate_blocks_with_navigation(blocks, navigation)
         segments = extract_segments(blocks, segment_mode) if include_segments else []
         if include_segments and (include_xhtml_fragments or include_markdown_fragments):
             blocks_by_id = {block.id: block for block in blocks}
