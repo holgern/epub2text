@@ -110,5 +110,19 @@
     "status": "released",
     "title": "Inline XHTML Element Support",
     "version": "v0.2.6"
+  },
+  {
+    "artifact_count": 0,
+    "boundary_ref": null,
+    "changelog_file": null,
+    "entry_count": 2,
+    "previous_version": "v0.2.6",
+    "record_revision": 4,
+    "released_at": "2026-06-30",
+    "source_count": null,
+    "source_refs": [],
+    "status": "released",
+    "title": "Release v0.2.7",
+    "version": "v0.2.7"
   }
 ]

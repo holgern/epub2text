@@ -6,6 +6,7 @@ import html
 import re
 import urllib.parse
 from dataclasses import dataclass, field
+from typing import Literal, cast
 
 from .diagnostics import Diagnostic
 from .inline_spans import InlineSpan, InlineSpanIssue, build_inline_spans
@@ -90,7 +91,7 @@ def safe_link_destination(href: str, policy: ExtractionPolicy) -> str:
 
 
 def _diagnostic(
-    severity: str,
+    severity: Literal["info", "warning", "error"],
     code: str,
     message: str,
     block: TextBlock,
@@ -238,18 +239,21 @@ def _render_items(
             parts.append(escape_markdown_text(block.text[pos:item_start]))
             pos = item_start
         if kind == "empty":
-            parts.append(_render_empty(item, block, policy, diagnostics))
+            parts.append(
+                _render_empty(cast(InlineSpan, item), block, policy, diagnostics)
+            )
             continue
+        span = cast(_RangeSpan, item)
         parts.append(
             _render_span(
-                item,
+                span,
                 block,
                 policy,
                 diagnostics,
                 link_depth=link_depth,
             )
         )
-        pos = item.end
+        pos = span.end
     if pos < end:
         parts.append(escape_markdown_text(block.text[pos:end]))
     return "".join(parts)

@@ -8,10 +8,10 @@ import re
 import urllib.parse
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import ebooklib  # type: ignore[import-untyped]
-from bs4 import BeautifulSoup, NavigableString  # type: ignore[import-untyped]
+from bs4 import BeautifulSoup, NavigableString
 from defusedxml import ElementTree as DefusedET
 from ebooklib import epub
 
@@ -344,7 +344,7 @@ class EPUBParser:
         for item in self.book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
             href = item.get_name()
             if href in doc_order or any(
-                href in nav_point.get("src", "")
+                href in str(nav_point.get("src", ""))
                 for nav_point in nav_soup.find_all(["content", "a"])
             ):
                 try:
@@ -448,11 +448,14 @@ class EPUBParser:
                 # Handle ordered lists
                 for ol in slice_soup.find_all("ol"):
                     start_attr = ol.get("start")
-                    start_num = int(start_attr) if start_attr else 1
+                    start_num = int(str(start_attr)) if start_attr else 1
                     for li_idx, li in enumerate(ol.find_all("li", recursive=False)):
                         number_text = f"{start_num + li_idx}) "
-                        if li.string:
-                            li.string.replace_with(number_text + str(li.string))
+                        li_text = li.string
+                        if li_text:
+                            cast(NavigableString, li_text).replace_with(
+                                number_text + str(li_text)
+                            )
                         else:
                             li.insert(0, NavigableString(number_text))
 

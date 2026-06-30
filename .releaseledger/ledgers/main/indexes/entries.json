@@ -114,6 +114,21 @@
   {
     "audience": null,
     "breaking": false,
+    "entry_id": "entry-0001",
+    "internal": false,
+    "kind": "docs",
+    "order": 1,
+    "record_revision": 1,
+    "release_version": "v0.2.7",
+    "scopes": [],
+    "source_refs": ["git:124ffced7d2a9a68f98e2f274146bc8d4ce61b22"],
+    "sources": ["git:124ffced7d2a9a68f98e2f274146bc8d4ce61b22"],
+    "status": "accepted",
+    "summary": "Converted project documentation from RST to Markdown and enabled MyST parser for Sphinx builds"
+  },
+  {
+    "audience": null,
+    "breaking": false,
     "entry_id": "entry-0002",
     "internal": false,
     "kind": "added",
@@ -194,6 +209,21 @@
     "source_refs": [],
     "status": "accepted",
     "summary": "TextFragment model for fine-grained content representation with entity and inline tag runs"
+  },
+  {
+    "audience": null,
+    "breaking": false,
+    "entry_id": "entry-0002",
+    "internal": false,
+    "kind": "added",
+    "order": 2,
+    "record_revision": 1,
+    "release_version": "v0.2.7",
+    "scopes": [],
+    "source_refs": ["git:09ece97319945bad28b1769e211909e8ab7b1518"],
+    "sources": ["git:09ece97319945bad28b1769e211909e8ab7b1518"],
+    "status": "accepted",
+    "summary": "Annotated structured extraction blocks with navigation context from EPUB TOC, assigning chapter IDs and titles to text blocks"
   },
   {
     "audience": null,

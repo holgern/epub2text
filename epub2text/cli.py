@@ -7,6 +7,7 @@ import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Literal
 
 import click
 from rich.console import Console
@@ -1646,7 +1647,7 @@ def extract_structure(
     raw: bool,
     xhtml_fragments: bool,
     markdown_fragments: bool,
-    markdown_flavor: str,
+    markdown_flavor: Literal["commonmark", "gfm"],
 ) -> None:
     """Extract structured EPUB JSON without modifying the EPUB."""
     parser = EPUBParser(str(filepath))

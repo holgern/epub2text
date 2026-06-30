@@ -17,14 +17,14 @@ def _split_offsets(text: str, mode: str) -> list[tuple[str, int, int]]:
             pattern = re.compile(r"[^\n]+(?:\n(?!\n)[^\n]+)*")
         else:
             pattern = re.compile(r"[^.!?]+[.!?]?\s*", re.S)
-        result = []
+        fallback_result: list[tuple[str, int, int]] = []
         for m in pattern.finditer(text):
             value = m.group(0)
             if not value:
                 continue
             trimmed = value.rstrip()
-            result.append((trimmed, m.start(), m.start() + len(trimmed)))
-        return result
+            fallback_result.append((trimmed, m.start(), m.start() + len(trimmed)))
+        return fallback_result
 
     # Structured extraction should be deterministic and must not depend on an
     # ambient spaCy environment. An installed-but-incomplete spaCy package
